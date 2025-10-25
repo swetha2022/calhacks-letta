@@ -2,7 +2,7 @@ from letta_client import Letta
 
 client = Letta(token="sk-let-MWQzYTg2YTUtZGE4ZC00MWViLWJkMmYtZWMxY2NhOThkYzY3OjFjNjZkYzFhLWY5MWQtNDI3My04ZDJhLWEwYzc1ZjQwNTIxOA==")
 
-def create_agent(model_path, embedding_path, human_descriptor, persona_descriptor):
+def create_agent(model_path, embedding_path, human_descriptor, persona_descriptor, tags, tools):
     agent = client.agents.create(
         model=model_path,
         embedding=embedding_path,
@@ -16,7 +16,8 @@ def create_agent(model_path, embedding_path, human_descriptor, persona_descripto
                 "value": persona_descriptor
             }
         ],
-        tools=["web_search", "run_code"]
+        tags=tags,
+        tools=tools
     )
     return agent
 
@@ -30,7 +31,8 @@ def send_message(agent, content):
             }
         ]
     )
-    return response.messages[-1].content 
+    return response.messages[-1].content
+     
 
 def attach_tool(agent, tool_id):
     client.agents.tools.attach(
@@ -42,25 +44,28 @@ def detach_tool(agent, tool_id):
     client.agents.tools.detach(
         agent_id=agent.id,
         tool_id=tool_id,
+    )    
+
+def modify_memory(agent, block_label, updated_value): 
+    client.agents.blocks.modify(
+        agent_id=agent.id,
+        block_label=block_label,
+        value=updated_value
     )
 
+def retrieve_memory_block(agent, block_label):
+    return client.agents.blocks.retrieve(
+        agent_id=agent.id,
+        block_label=block_label
+    )
 
-# the agent will think, then edit its memory using a tool
-# for message in response.messages:
-#     print(message)
+agent_1 = create_agent(model_path="openai/gpt-4o-mini", embedding_path="openai/text-embedding-3-small", human_descriptor="The human's name is Chad. They like vibe coding.", persona_descriptor="My name is Sam, a helpful assistant.", tags=["agent_1"], tools=["web_search", "run_code", "send_message_to_agents_matching_all_tags"])
+agent_2 = create_agent(model_path="openai/gpt-4o-mini", embedding_path="openai/text-embedding-3-small", human_descriptor="The human's name is Alice. They enjoy painting.", persona_descriptor="My name is Eve, a helpful assistant.", tags=["agent_2"], tools=["web_search", "run_code", "send_message_to_agents_matching_all_tags"]) 
 
-# The content of this memory block will be something like
-# "The human's name is Brad. They like vibe coding."
-# Fetch this block's content with:
+query_agent2 = f"Hey - just letting you know I'm going to connect you with another one of my agent buddies. Hope you enjoy chatting with them (I think they'll reach out directly). When you receive their message, send a message back to agent with tag agent_1."
+print(send_message(agent_2, query_agent2))
+print() 
 
-agent_1 = create_agent(model_path="openai/gpt-4o-mini", embedding_path="openai/text-embedding-3-small", human_descriptor="The human's name is Chad. They like vibe coding.", persona_descriptor="My name is Sam, a helpful assistant.")
-agent_2 = create_agent(model_path="openai/gpt-4o-mini", embedding_path="openai/text-embedding-3-small", human_descriptor="The human's name is Alice. They enjoy painting.", persona_descriptor="My name is Eve, a helpful assistant.") 
-
-response_2 = send_message(agent_2, "How are you?") 
-print(response_2) 
-
-response_1 = send_message(agent_1, "How are you?") 
-print(response_1) 
-
-# human_block = client.agents.blocks.retrieve(agent_id=agent_state.id, block_label="human")
-# print(human_block.value) 
+query_agent1 = f"Hey, my other agent friend is lonely and needs someone to chat to. Can you give them a ring? Their ID is {agent_2.id}. If you can reach them, they will message back and tell me what they said."
+print(send_message(agent_1, query_agent1))
+print()
