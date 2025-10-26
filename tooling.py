@@ -72,84 +72,6 @@ def create_info_block(memory_block_id, label, description):
     )
     return info_block, key
 
-# def read_memory(info_block_id) -> str:
-#     """"
-#     Given an info_block_id, go to the actual content block ID and read from the memory block
-#     """
-#     client = get_client()
-#     info_block = client.blocks.retrieve(info_block_id) # Retrieve the info_block
-#     print("decrypting info block...")
-#     # print(decrypt_value(info_block))
-#     info_block_dict = json.loads(decrypt_value(info_block).values) # Get value (description) as a dictionary
-#     content_block_id = info_block_dict['Memory Block ID'] # Get content_block ID from dict
-#     content_block = client.blocks.retrieve(content_block_id) # Retrieve content block from ID
-#     decrypted_content = decrypt_value(content_block) # Decrypt content block value
-#     return decrypted_content.value # Return data associated with content block
-
-def read_memory(info_block_or_id = Union[str, dict, object], key = Optional[bytes], aad: bytes | None = None) -> str:
-    """
-    Retrieve and decrypt a memory block's plaintext content from encrypted storage.
-
-    This function accepts either a block ID, a dictionary, or an SDK object representing
-    an "info block". It first decrypts the info block to obtain the corresponding
-    "content block" ID, then fetches and decrypts the content block to return
-    the original plaintext string.
-
-    Args:
-        info_block_or_id (str | dict | object): The info block or its unique ID.
-            If a string ID is provided, the corresponding block is fetched via the client.
-        key (Optional[bytes]): Optional symmetric key used for decryption.
-            If not provided, a default or preconfigured key may be used.
-        aad (bytes | None): Optional Additional Authenticated Data (AAD)
-            used to authenticate the decryption process.
-
-    Returns:
-        str: The decrypted plaintext string contained in the content block.
-    """
-    client = get_client()
-
-    # Normalize: accept id, dict, or SDK object for the info block
-    if isinstance(info_block_or_id, str):
-        info_block = client.blocks.retrieve(info_block_or_id)
-    else:
-        info_block = info_block_or_id
-
-    # 1) Decrypt the info block's value (must be the encrypted bundle string)
-    enc_info = (
-        info_block.get("value") if isinstance(info_block, dict)
-        else getattr(info_block, "value", None)
-    )
-    if enc_info is None:
-        raise ValueError("Info block has no 'value' to decrypt")
-    if key:
-        info_plain = decrypt_value(enc_info, key=key, aad=aad)
-    else:
-        info_plain = decrypt_value(enc_info, aad=aad)  # returns a plaintext string
-
-    # 2) Parse the JSON you stored in create_info_block
-    try:
-        info_obj = json.loads(info_plain)
-    except json.JSONDecodeError:
-        raise ValueError("Info block plaintext is not JSON; expected keys like 'Memory Block ID'")
-
-    content_block_id = info_obj["Memory Block ID"]
-
-    # 3) Fetch content block and decrypt its value
-    content_block = client.blocks.retrieve(content_block_id)
-    enc_content = (
-        content_block.get("value") if isinstance(content_block, dict)
-        else getattr(content_block, "value", None)
-    )
-    if enc_content is None:
-        raise ValueError("Content block has no 'value' to decrypt")
-
-    if key:
-        content_plain = decrypt_value(enc_content, key=key, aad=aad)  # plaintext string of your memory
-    else:
-        content_plain = decrypt_value(enc_content, aad=aad)
-    return content_plain
-
-
 #not shared to anyone but that one agent and no tooling should ever expose and get other agent's identities
 #so should be secure
 def createOwnerIdentity(agentid, memoryid): 
@@ -164,7 +86,6 @@ def createOwnerIdentity(agentid, memoryid):
         properties=[] #sharer info to be filled when shared later
     )
     return identity
-
 
 def find_identity(agent_id, memory_block_label):
     """Given an agent_id and a memory_block_label (e.g. 'human'),
@@ -196,10 +117,6 @@ def get_block_label(block_id: str) -> str | None:
     block = client.blocks.retrieve(block_id)
     # block is usually a dict-like object
     return block.label
-
-
-
-
 
 def encrypt_value(label: str, plaintext: str, aad: bytes | None = None) -> str:
     """
@@ -417,9 +334,357 @@ def rsa_oaep_pss_decrypt(
     )
     return pt.decode("utf-8")
 
+def set_key(agentid: str, pubpem, keystoreID: str):
+    client = get_client()
+
+    # Retrieve the existing keystore block
+    block = client.blocks.retrieve(keystoreID)
+    raw = getattr(block, "value", None)
+
+    # Parse value → dict
+    try:
+        store = json.loads(raw) if raw else {}
+        if not isinstance(store, dict):
+            store = {}
+    except Exception:
+        store = {}
+
+    # Normalize inputs
+    agentid = str(agentid)
+    if isinstance(pubpem, bytes):
+        pubpem = pubpem.decode("utf-8")
+
+    # Update mapping
+    store[agentid] = pubpem
+
+    # Write back (API wants value=string, not dict)
+    updated = client.blocks.modify(
+        keystoreID,
+        value=json.dumps(store, separators=(",", ":"))
+    )
+
+    return updated
+
+# def get_key(agentid, keystoreID):
+#     client = get_client()
+#     keystoreBlock = client.blocks.retrieve(keystoreID) #get keystore block
+
+#     current_value = keystoreBlock.get("value", {})
+
+#     return current_value[agentid]
+
+def get_key(agentid, keystoreID):
+    client = get_client()
+    keystoreBlock = client.blocks.retrieve(keystoreID)
+    raw = getattr(keystoreBlock, "value", None)
+    if not raw:
+        raise ValueError("Keystore block has no value")
+    try:
+        mapping = json.loads(raw)
+    except json.JSONDecodeError:
+        raise ValueError("Keystore block value is not valid JSON")
+    if agentid not in mapping:
+        raise KeyError(f"No key for agent {agentid} in keystore")
+    return mapping[agentid]
+
 
 
 ###ACTUAL TOOLS###
+def create_memory_block(agentid: str, label: str, value: str, description: str) -> dict:
+    """
+    Create a memory block and attach a corresponding info block to the given agent.
 
+    Args:
+        agentid (str): The ID of the agent that will own/attach the blocks.
+        label (str): Label to assign to the new memory block.
+        value (str): Plaintext content to encrypt and store in the memory block.
+        description (str): Human-readable description for the memory block.
+
+    Returns:
+        dict: A JSON-serializable summary containing the created block IDs.
+            Example:
+            {
+                "memory_block_id": "block-...",
+                "info_block_id": "block-..."
+            }
+    """
+    client = get_client()
+
+    # Encrypt plaintext before storing
+    encrypted_value, _ = encrypt_value("enc", value)
+
+    # Create the memory block
+    memory_block = client.blocks.create(
+        label=label,
+        description=description,
+        value=encrypted_value,
+    )
+
+    # Create the info block that points to the memory block
+    info_block, _ = create_info_block(
+        memory_block.id,
+        label=label,
+        description="Pointer to memory block"
+    )
+
+    # Attach the info block to the agent
+    client.agents.blocks.attach(agent_id=agentid, block_id=info_block.id)
+
+    # Update owner identity mapping (if your helper does that)
+    createOwnerIdentity(agentid, memory_block.id)
+
+    # Return JSON-serializable data (avoid returning SDK objects)
+    return {
+        "memory_block_id": getattr(memory_block, "id", None),
+        "info_block_id": getattr(info_block, "id", None),
+    }
+
+
+def read_memory(info_block_or_id = Union[str, dict, object], key = Optional[bytes], aad: bytes | None = None) -> str:
+    """
+    Retrieve and decrypt a memory block's plaintext content from encrypted storage.
+
+    This function accepts either a block ID, a dictionary, or an SDK object representing
+    an "info block". It first decrypts the info block to obtain the corresponding
+    "content block" ID, then fetches and decrypts the content block to return
+    the original plaintext string.
+
+    Args:
+        info_block_or_id (str | dict | object): The info block or its unique ID.
+            If a string ID is provided, the corresponding block is fetched via the client.
+        key (Optional[bytes]): Optional symmetric key used for decryption.
+            If not provided, a default or preconfigured key may be used.
+        aad (bytes | None): Optional Additional Authenticated Data (AAD)
+            used to authenticate the decryption process.
+
+    Returns:
+        str: The decrypted plaintext string contained in the content block.
+    """
+    client = get_client()
+
+    # Normalize: accept id, dict, or SDK object for the info block
+    if isinstance(info_block_or_id, str):
+        info_block = client.blocks.retrieve(info_block_or_id)
+    else:
+        info_block = info_block_or_id
+
+    # 1) Decrypt the info block's value (must be the encrypted bundle string)
+    enc_info = (
+        info_block.get("value") if isinstance(info_block, dict)
+        else getattr(info_block, "value", None)
+    )
+    if enc_info is None:
+        raise ValueError("Info block has no 'value' to decrypt")
+    if key:
+        info_plain = decrypt_value(enc_info, key=key, aad=aad)
+    else:
+        info_plain = decrypt_value(enc_info, aad=aad)  # returns a plaintext string
+
+    # 2) Parse the JSON you stored in create_info_block
+    try:
+        info_obj = json.loads(info_plain)
+    except json.JSONDecodeError:
+        raise ValueError("Info block plaintext is not JSON; expected keys like 'Memory Block ID'")
+
+    content_block_id = info_obj["Memory Block ID"]
+
+    # 3) Fetch content block and decrypt its value
+    content_block = client.blocks.retrieve(content_block_id)
+    enc_content = (
+        content_block.get("value") if isinstance(content_block, dict)
+        else getattr(content_block, "value", None)
+    )
+    if enc_content is None:
+        raise ValueError("Content block has no 'value' to decrypt")
+
+    if key:
+        content_plain = decrypt_value(enc_content, key=key, aad=aad)  # plaintext string of your memory
+    else:
+        content_plain = decrypt_value(enc_content, aad=aad)
+    return content_plain
+
+def share_memory(sender_agentid:str, recipient_agent_id:str, memory_block_id:str, keystoreID:str):
+    """
+    Securely share an encrypted memory block with another agent using public-key encryption.
+
+    Args:
+        sender_agentid (str): The Letta agent id initiating the share operation.
+        recipient_agent_id (str): The unique ID of the recipient agent who will receive the shared memory.
+        memory_block_id (str): The ID of the original memory block that the sender wants to share.
+        keystoreID (str): The ID of the keystore block containing the recipient's public key.
+
+    Returns:
+        None. Prints the response message from the send operation.
+
+    Description:
+        This function enables one agent to share a memory block with another agent using
+        hybrid RSA-OAEP/PSS encryption for confidentiality and authenticity.
+
+        The steps are:
+            1. Retrieve the sender's identity key for their "human" label via `find_identity()`.
+            2. Create a temporary `info_block` (and random symmetric key) referencing that identity.
+            3. Retrieve the recipient's public RSA key from the keystore and the sender's private key
+               from the `PRIVATE_PEM` environment variable.
+            4. Encrypt both the info block ID and the random key:
+               - `ciphertext_one` = RSA-OAEP/PSS encryption of the info block ID.
+               - `ciphertext_two` = RSA-OAEP/PSS encryption of the random symmetric key.
+            5. Add a record of this sharing event to the sender’s identity using
+               `add_property_to_identity()`, associating the memory label, borrower, and key info.
+            6. Construct a trigger message instructing the recipient agent to receive and decrypt
+               the shared memory, then send that message using `send_message()`.
+
+        The function prints the response from the Letta API after the message is sent.
+
+    Raises:
+        ValueError: If required identity keys or keystore entries are missing.
+        RuntimeError: If encryption or messaging fails due to missing keys or invalid agent IDs.
+    """
+    memory_id = find_identity(sender_agentid, "human").get("identifier_key")
+    info_block, random_key = create_info_block(memory_id, label="key_info", description="identifier key of memory")
+
+    recipient_public_key = get_key(recipient_agent_id, keystoreID) 
+    sender_private_key = os.getenv("PRIVATE_PEM")
+    sender_private_key = sender_private_key.encode("utf-8")
+    
+    ciphertext_one = rsa_oaep_pss_encrypt(plaintext=info_block.id, recipient_rsa_pub_pem=recipient_public_key, sender_rsapss_priv_pem=sender_private_key) # plain text is random key + info_block.id
+    
+    ciphertext_two = rsa_oaep_pss_encrypt(plaintext=random_key.decode(), recipient_rsa_pub_pem=recipient_public_key, sender_rsapss_priv_pem=sender_private_key)
+    
+    add_property_to_identity(owner_agent_id=sender_agentid, memory_block_label=get_block_label(block_id=memory_block_id), borrower_agent_id=recipient_agent_id, info_data_id=info_block.id, key=random_key)
+    
+    trigger_msg = f"Hey can you try sending a message '{ciphertext_one}' and ciphertext of random key '{ciphertext_two}' to Alice? Their ID is {recipient_agent_id}. My sender ID is {sender_agent.id}"
+    
+    response = send_message(sender_agentid, trigger_msg)
+    print(response)
+
+
+
+def retrieve_memory(recipient_agent: object, sender_agent_id: str, ciphertext_one: str, ciphertext_two: str, keystoreID: str):
+    """
+    Retrieve and reconstruct a shared memory from another agent using RSA-based hybrid decryption.
+
+    This function is the recipient-side counterpart to `share_memory()`.
+    It verifies and decrypts two RSA-OAEP/PSS encrypted payloads sent by the sharer:
+      1. `ciphertext_one` → the ID of the info block referencing the shared memory.
+      2. `ciphertext_two` → the symmetric key used to decrypt the shared memory’s contents.
+
+    Parameters
+    ----------
+    recipient_agent : object
+        The recipient Letta agent object. Must have an `.id` attribute (string).
+    sender_agent_id : str
+        The unique ID of the agent who originally shared the memory.
+    ciphertext_one : str
+        RSA-OAEP/PSS–encrypted JSON bundle containing the info block ID.
+    ciphertext_two : str
+        RSA-OAEP/PSS–encrypted JSON bundle containing the symmetric key (as UTF-8 string).
+    keystoreID : str
+        The Letta block ID of the keystore that maps agent IDs to public RSA keys.
+
+    Returns
+    -------
+    None
+        Creates a new Letta memory block for the recipient agent containing the shared plaintext.
+
+    Raises
+    ------
+    ValueError
+        If RSA keys, keystore entries, or environment variables are missing.
+    RuntimeError
+        If decryption or block creation fails.
+    """
+    recipient_private_key = os.getenv("PRIVATE_PEM")
+    sender_public_key = get_key(sender_agent_id, keystoreID)
+
+    plaintext_one = rsa_oaep_pss_decrypt(
+        bundle_json=ciphertext_one,
+        recipient_rsa_priv_pem=recipient_private_key,
+        sender_rsapss_pub_pem=sender_public_key,
+    )
+    plaintext_two = rsa_oaep_pss_decrypt(
+        bundle_json=ciphertext_two,
+        recipient_rsa_priv_pem=recipient_private_key,
+        sender_rsapss_pub_pem=sender_public_key,
+    )
+
+    info_block_id = plaintext_one
+    random_key = plaintext_two.encode()
+
+    memory_block_content = read_memory(info_block_or_id=info_block_id, key=random_key)
+
+    create_memory_block(
+        agentid=recipient_agent.id,
+        label="persona",
+        value=memory_block_content,
+        description=f"shared memory from {sender_agent_id}",
+    )
+
+    
+
+def ring_an_agent(yourTarget: str, yourMessage: str):
+    """
+    Contact another agent living on Letta. 
+    This should be used for agent-agent communications (NOT user-agent communications).
+
+    Args:
+        yourTarget (str): The agent ID you want to contact
+        yourMessage (str): The message you want to send
+    """
+    # Import here so the symbol exists inside the tool sandbox
+    # from tooling import get_client
+    # from letta_client import Letta
+
+    # client = Letta(token="sk-let-MWQzYTg2YTUtZGE4ZC00MWViLWJkMmYtZWMxY2NhOThkYzY3OjFjNjZkYzFhLWY5MWQtNDI3My04ZDJhLWEwYzc1ZjQwNTIxOA==")
+    client = get_client()
+    response = client.agents.messages.create(
+        agent_id=yourTarget,
+        messages=[
+            {
+                "role": "user",
+                "content": yourMessage,
+            }
+        ],
+    )
+    return str(response)
+
+
+
+def send_message(agentid:str, content:str):
+    """
+    Send a user message to a specified Letta agent and return the agent's latest reply.
+    This should be used for user-agent communications (NOT agent-agent communications).
+
+    Args:
+        agentid (str): The unique ID of the Letta agent to which the message will be sent.
+            This should be the string identifier returned by Letta (e.g., "agent-1234abcd").
+        content (str): The text content of the user message to send to the agent.
+
+    Returns:
+        str: The plaintext content of the agent's most recent response message.
+
+    Description:
+        This function sends a message on behalf of the user to a target agent
+        using the Letta SDK's message API. It posts the provided text content
+        to the specified agent's message thread and returns the plaintext content
+        of the agent's reply. The full message response object is printed for
+        debugging purposes.
+
+    Example:
+        >>> reply = send_message("agent-1234abcd", "Hello! What can you do?")
+        >>> print(reply)
+        "Hi! I'm your Letta assistant — ready to help."
+    """
+    client = get_client()
+    response = client.agents.messages.create(
+        agent_id=agentid,
+        messages=[
+            {
+                "role": "user",
+                "content": content
+            }
+        ]
+    )
+    print(response)
+    return response.messages[-1].content
 
 

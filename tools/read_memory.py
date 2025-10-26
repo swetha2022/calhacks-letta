@@ -139,136 +139,18 @@ def read_memory(
     return decrypt_value(enc_content, key=key, aad=aad)
 
 
-# def read_memory(
-#     info_block_or_id: str,
-#     key_b64: Optional[str] = None,
-#     aad_b64: Optional[str] = None,
-# ) -> str:
-#     """
-#     Retrieve and decrypt plaintext data from a stored memory block using its info block.
-
-#     Args:
-#         info_block_or_id (str): The ID of an info block that references an encrypted content block.
-#         key_b64 (str | None): Optional base64-encoded symmetric key. If provided, this key is used
-#             directly for decryption. Defaults to None.
-#         aad_b64 (str | None): Optional base64-encoded Additional Authenticated Data (AAD) that must
-#             match what was used during encryption. Defaults to None.
-
-#     Returns:
-#         str: The decrypted plaintext contents of the referenced memory block.
-
-#     Raises:
-#         ValueError: If required fields are missing or JSON is malformed.
-#         RuntimeError: If decryption fails (bad key, corrupted ciphertext, or AAD mismatch).
-#     """
-#     client = get_client()
-
-#     # Load info block
-#     info_block = client.blocks.retrieve(info_block_or_id)
-#     enc_info = info_block.get("value") if isinstance(info_block, dict) else getattr(info_block, "value", None)
-#     if enc_info is None:
-#         raise ValueError("Info block has no 'value' to decrypt")
-
-#     # Decode inputs
-#     key: bytes | None = base64.b64decode(key_b64) if key_b64 else None
-#     aad: bytes | None = base64.b64decode(aad_b64) if aad_b64 else None
-
-#     # Decrypt info → get content block id
-#     info_plain = decrypt_value(enc_info, key=key, aad=aad)
-#     info_obj = json.loads(info_plain)
-#     content_block_id = info_obj["Memory Block ID"]
-
-#     # Decrypt content
-#     content_block = client.blocks.retrieve(content_block_id)
-#     enc_content = content_block.get("value") if isinstance(content_block, dict) else getattr(content_block, "value", None)
-#     if enc_content is None:
-#         raise ValueError("Content block has no 'value' to decrypt")
-
-#     return decrypt_value(enc_content, key=key, aad=aad)
 
 
-# # def read_memory(info_block_or_id, key = Optional[bytes], aad: bytes | None = None) -> str:
-# #     """
-# #     Retrieve and decrypt plaintext data from a stored memory block using its associated info block.
+def retrieve_memory(recipient_agent, sender_agent_id, ciphertext_one, ciphertext_two, keystoreID): 
+    recipient_private_key = os.getenv("PRIVATE_PEM")
+    sender_public_key = get_key(sender_agent_id, keystoreID) 
 
-# #     Args:
-# #         info_block_or_id (str | dict | object): The info block (or its ID) that references
-# #             the encrypted content block. Can be:
-# #                 - A string block ID (e.g., "block-abc123...")
-# #                 - A dict containing a "value" field
-# #                 - An SDK block object with a `.value` attribute
-# #         key (bytes | None): Optional symmetric key used to decrypt the memory contents.
-# #             If provided, it overrides any key derivation logic and is passed directly to
-# #             `decrypt_value()`. Defaults to None.
-# #         aad (bytes | None): Optional Additional Authenticated Data (AAD) used for
-# #             AES-GCM decryption. Must match the AAD used at encryption time, or left None
-# #             if no AAD was used. Defaults to None.
+    plaintext_one = rsa_oaep_pss_decrypt(bundle_json=ciphertext_one, recipient_rsa_priv_pem=recipient_private_key, sender_rsapss_pub_pem=sender_public_key)
+    plaintext_two = rsa_oaep_pss_decrypt(bundle_json=ciphertext_two, recipient_rsa_priv_pem=recipient_private_key, sender_rsapss_pub_pem=sender_public_key)
 
-# #     Returns:
-# #         str: The decrypted plaintext contents of the referenced memory block.
+    info_block_id = plaintext_one
+    random_key = plaintext_two.encode()
 
-# #     Raises:
-# #         ValueError: If the info block or content block lacks a "value" field, the decrypted
-# #             content is not valid JSON, or the JSON is missing the expected
-# #             `"Memory Block ID"` key.
-# #         RuntimeError: If decryption fails due to an invalid key, corrupted ciphertext,
-# #             or mismatched AAD.
+    memory_block_content = read_memory(info_block_or_id=info_block_id, key=random_key)
 
-# #     Description:
-# #         This function performs a two-stage decryption process for Letta memory storage:
-# #             1. Decrypt the provided info block to extract the ID of the referenced
-# #                content block (from the stored JSON metadata).
-# #             2. Retrieve that content block and decrypt its encrypted value to return
-# #                the original plaintext string.
-
-# #         If `key` is supplied, it is used directly for both decryptions.
-# #         If omitted, the default `decrypt_value()` implementation will derive or load
-# #         the appropriate key internally.
-
-# #     Example:
-# #         >>> plaintext = read_memory("block-1234abcd")
-# #         >>> print(plaintext)
-# #         "My stored memory text"
-# #     """
-# #     client = get_client()
-
-# #     # Normalize: accept id, dict, or SDK object for the info block
-# #     if isinstance(info_block_or_id, str):
-# #         info_block = client.blocks.retrieve(info_block_or_id)
-# #     else:
-# #         info_block = info_block_or_id
-
-# #     # 1) Decrypt the info block's value (must be the encrypted bundle string)
-# #     enc_info = (
-# #         info_block.get("value") if isinstance(info_block, dict)
-# #         else getattr(info_block, "value", None)
-# #     )
-# #     if enc_info is None:
-# #         raise ValueError("Info block has no 'value' to decrypt")
-# #     if key:
-# #         info_plain = decrypt_value(enc_info, key=key, aad=aad)
-# #     else:
-# #         info_plain = decrypt_value(enc_info, aad=aad)  # returns a plaintext string
-
-# #     # 2) Parse the JSON you stored in create_info_block
-# #     try:
-# #         info_obj = json.loads(info_plain)
-# #     except json.JSONDecodeError:
-# #         raise ValueError("Info block plaintext is not JSON; expected keys like 'Memory Block ID'")
-
-# #     content_block_id = info_obj["Memory Block ID"]
-
-# #     # 3) Fetch content block and decrypt its value
-# #     content_block = client.blocks.retrieve(content_block_id)
-# #     enc_content = (
-# #         content_block.get("value") if isinstance(content_block, dict)
-# #         else getattr(content_block, "value", None)
-# #     )
-# #     if enc_content is None:
-# #         raise ValueError("Content block has no 'value' to decrypt")
-
-# #     if key:
-# #         content_plain = decrypt_value(enc_content, key=key, aad=aad)  # plaintext string of your memory
-# #     else:
-# #         content_plain = decrypt_value(enc_content, aad=aad)
-# #     return content_plain
+    create_memory_block(agentid=recipient_agent.id, label="persona", value=memory_block_content, description='shared memory from ' + sender_agent_id)
