@@ -1,5 +1,6 @@
 # from letta import tool
 import os, json
+from typing import Optional
 
 from dotenv import load_dotenv #load env file
 load_dotenv()
@@ -65,7 +66,7 @@ def create_info_block(memory_block_id, label, description):
 #     decrypted_content = decrypt_value(content_block) # Decrypt content block value
 #     return decrypted_content.value # Return data associated with content block
 
-def read_memory(info_block_or_id, aad: bytes | None = None) -> str:
+def read_memory(info_block_or_id, key = Optional[bytes], aad: bytes | None = None) -> str:
     """
     Given an *info* block (id/obj/dict), decrypt it to get the referenced
     content block id, then fetch & decrypt the content block and return plaintext.
@@ -85,7 +86,10 @@ def read_memory(info_block_or_id, aad: bytes | None = None) -> str:
     )
     if enc_info is None:
         raise ValueError("Info block has no 'value' to decrypt")
-    info_plain = decrypt_value(enc_info, aad=aad)  # returns a plaintext string
+    if key:
+        info_plain = decrypt_value(enc_info, key=key, aad=aad)
+    else:
+        info_plain = decrypt_value(enc_info, aad=aad)  # returns a plaintext string
 
     # 2) Parse the JSON you stored in create_info_block
     try:
@@ -104,7 +108,10 @@ def read_memory(info_block_or_id, aad: bytes | None = None) -> str:
     if enc_content is None:
         raise ValueError("Content block has no 'value' to decrypt")
 
-    content_plain = decrypt_value(enc_content, aad=aad)  # plaintext string of your memory
+    if key:
+        content_plain = decrypt_value(enc_content, key=key, aad=aad)  # plaintext string of your memory
+    else:
+        content_plain = decrypt_value(enc_content, aad=aad)
     return content_plain
 
 

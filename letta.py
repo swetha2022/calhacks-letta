@@ -1,6 +1,8 @@
 from letta_client import Letta
 from tooling import create_memory_block, createOwnerIdentity, create_info_block, find_identity, read_memory, get_client
-# import os
+import os
+from crypto import generate_rsa_keypair
+from keystore import set_key, get_key, create_keystore
 
 from dotenv import load_dotenv #load env file
 load_dotenv()
@@ -15,6 +17,7 @@ load_dotenv()
 
 # client = Letta(token="sk-let-MWQzYTg2YTUtZGE4ZC00MWViLWJkMmYtZWMxY2NhOThkYzY3OjFjNjZkYzFhLWY5MWQtNDI3My04ZDJhLWEwYzc1ZjQwNTIxOA==")
 client = get_client()
+keystoreID = create_keystore().id
 
 def create_agent(model_path, embedding_path, human_descriptor, persona_descriptor, tool):
     agent = client.agents.create(
@@ -32,6 +35,13 @@ def create_agent(model_path, embedding_path, human_descriptor, persona_descripto
         # ],
         tool_ids=[tool.id]
     )
+    privatepem, publicpem = generate_rsa_keypair(os.getenv("MASTER_PRIVATE_KEY"))
+    #store private pem
+    os.environ["PRIVATE_PEM"] = privatepem
+
+    #store public pem in Keystore
+    set_key(agentid=agent.id, pubpem=publicpem, keystoreID=keystoreID)
+
     create_memory_block(agent.id, label="human", value=human_descriptor, description="description of human")
     create_memory_block(agent.id, label="persona", value=persona_descriptor, description="description of persona")
     return agent
