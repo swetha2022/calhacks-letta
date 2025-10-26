@@ -148,13 +148,42 @@ def encrypt_value(label: str, plaintext: str, aad: bytes | None = None) -> str:
     }
     return json.dumps(bundle, separators=(",", ":")), key
 
-def decrypt_value(enc_bundle_json: str, aad: bytes | None = None) -> str:
+# def decrypt_value(enc_bundle_json: str, aad: bytes | None = None) -> str:
+#     """
+#     Decrypt a JSON bundle produced by encrypt_value and return the original UTF-8 string.
+
+#     Args:
+#         enc_bundle_json: JSON string with fields salt_b64, nonce_b64, ct_b64, label, alg, kdf.
+#         aad: Optional associated data; must match what was used during encryption.
+#     """
+#     try:
+#         bundle = json.loads(enc_bundle_json)
+#         if bundle.get("alg") != "AESGCM" or bundle.get("kdf") != "HKDF-SHA256":
+#             raise ValueError("Unsupported alg/kdf in bundle")
+
+#         label = bundle["label"]
+#         salt = b64decode(bundle["salt_b64"])
+#         nonce = b64decode(bundle["nonce_b64"])
+#         ct = b64decode(bundle["ct_b64"])
+#     except (KeyError, ValueError, binascii.Error, json.JSONDecodeError) as e:
+#         raise ValueError("Invalid encryption bundle") from e
+
+#     key = derive_key(label, salt=salt, length=32)
+#     aesgcm = AESGCM(key)
+#     pt = aesgcm.decrypt(nonce, ct, aad)
+#     return pt.decode("utf-8")
+
+def decrypt_value(enc_bundle_json: str, aad: bytes | None = None, key: Optional[bytes] = None) -> str:
     """
     Decrypt a JSON bundle produced by encrypt_value and return the original UTF-8 string.
 
     Args:
         enc_bundle_json: JSON string with fields salt_b64, nonce_b64, ct_b64, label, alg, kdf.
         aad: Optional associated data; must match what was used during encryption.
+        key: Optional raw AES key override (bytes). If provided, HKDF derivation is skipped.
+
+    Returns:
+        str: decrypted plaintext
     """
     try:
         bundle = json.loads(enc_bundle_json)
@@ -168,10 +197,14 @@ def decrypt_value(enc_bundle_json: str, aad: bytes | None = None) -> str:
     except (KeyError, ValueError, binascii.Error, json.JSONDecodeError) as e:
         raise ValueError("Invalid encryption bundle") from e
 
-    key = derive_key(label, salt=salt, length=32)
+    # If caller supplied an explicit AES key, use it; else re-derive from (label, salt)
+    if key is None:
+        key = derive_key(label, salt=salt, length=32)
+
     aesgcm = AESGCM(key)
     pt = aesgcm.decrypt(nonce, ct, aad)
     return pt.decode("utf-8")
+
 
 
 ##PUBLIC KEY ENCRYPTION WITH RSA OAEP AND SIGNING WITH RSA PSS##
@@ -440,123 +473,123 @@ def create_memory_block(agentid: str, label: str, value: str, description: str) 
     }
 
 
-def read_memory(info_block_or_id = Union[str, dict, object], key = Optional[bytes], aad: bytes | None = None) -> str:
+# def read_memory(info_block_or_id = Union[str, dict, object], key = Optional[bytes], aad: bytes | None = None) -> str:
+#     """
+#     Retrieve and decrypt a memory block's plaintext content from encrypted storage.
+
+#     This function accepts either a block ID, a dictionary, or an SDK object representing
+#     an "info block". It first decrypts the info block to obtain the corresponding
+#     "content block" ID, then fetches and decrypts the content block to return
+#     the original plaintext string.
+
+#     Args:
+#         info_block_or_id (str | dict | object): The info block or its unique ID.
+#             If a string ID is provided, the corresponding block is fetched via the client.
+#         key (Optional[bytes]): Optional symmetric key used for decryption.
+#             If not provided, a default or preconfigured key may be used.
+#         aad (bytes | None): Optional Additional Authenticated Data (AAD)
+#             used to authenticate the decryption process.
+
+#     Returns:
+#         str: The decrypted plaintext string contained in the content block.
+#     """
+#     client = get_client()
+
+#     # Normalize: accept id, dict, or SDK object for the info block
+#     if isinstance(info_block_or_id, str):
+#         info_block = client.blocks.retrieve(info_block_or_id)
+#     else:
+#         info_block = info_block_or_id
+
+#     # 1) Decrypt the info block's value (must be the encrypted bundle string)
+#     enc_info = (
+#         info_block.get("value") if isinstance(info_block, dict)
+#         else getattr(info_block, "value", None)
+#     )
+#     if enc_info is None:
+#         raise ValueError("Info block has no 'value' to decrypt")
+#     if key:
+#         info_plain = decrypt_value(enc_info, key=key, aad=aad)
+#     else:
+#         info_plain = decrypt_value(enc_info, aad=aad)  # returns a plaintext string
+
+#     # 2) Parse the JSON you stored in create_info_block
+#     try:
+#         info_obj = json.loads(info_plain)
+#     except json.JSONDecodeError:
+#         raise ValueError("Info block plaintext is not JSON; expected keys like 'Memory Block ID'")
+
+#     content_block_id = info_obj["Memory Block ID"]
+
+#     # 3) Fetch content block and decrypt its value
+#     content_block = client.blocks.retrieve(content_block_id)
+#     enc_content = (
+#         content_block.get("value") if isinstance(content_block, dict)
+#         else getattr(content_block, "value", None)
+#     )
+#     if enc_content is None:
+#         raise ValueError("Content block has no 'value' to decrypt")
+
+#     if key:
+#         content_plain = decrypt_value(enc_content, key=key, aad=aad)  # plaintext string of your memory
+#     else:
+#         content_plain = decrypt_value(enc_content, aad=aad)
+#     return content_plain
+
+from typing import Optional
+
+def read_memory(info_bloc_or_id: str, key: Optional[bytes] = None, aad: bytes | None = None) -> str:
     """
     Retrieve and decrypt a memory block's plaintext content from encrypted storage.
 
-    This function accepts either a block ID, a dictionary, or an SDK object representing
-    an "info block". It first decrypts the info block to obtain the corresponding
-    "content block" ID, then fetches and decrypts the content block to return
-    the original plaintext string.
-
     Args:
-        info_block_or_id (str | dict | object): The info block or its unique ID.
-            If a string ID is provided, the corresponding block is fetched via the client.
-        key (Optional[bytes]): Optional symmetric key used for decryption.
-            If not provided, a default or preconfigured key may be used.
-        aad (bytes | None): Optional Additional Authenticated Data (AAD)
-            used to authenticate the decryption process.
+        info_bloc_or_id: The *ID string* of the info block to read.
+        key: Optional symmetric key override for decryption (bytes). If not provided,
+             decrypt_value will re-derive the key from the bundle's salt/label.
+        aad: Optional Additional Authenticated Data bytes used during encryption.
 
     Returns:
-        str: The decrypted plaintext string contained in the content block.
+        The decrypted plaintext contained in the referenced content block.
     """
     client = get_client()
 
-    # Normalize: accept id, dict, or SDK object for the info block
-    if isinstance(info_block_or_id, str):
-        info_block = client.blocks.retrieve(info_block_or_id)
-    else:
-        info_block = info_block_or_id
+    # 1) Fetch the info block by its ID
+    info_block = client.blocks.retrieve(info_bloc_or_id)
 
-    # 1) Decrypt the info block's value (must be the encrypted bundle string)
-    enc_info = (
-        info_block.get("value") if isinstance(info_block, dict)
-        else getattr(info_block, "value", None)
-    )
+    # 2) Decrypt the info block's value to learn the content block ID
+    enc_info = getattr(info_block, "value", None)
+    if enc_info is None and isinstance(info_block, dict):
+        enc_info = info_block.get("value")
     if enc_info is None:
         raise ValueError("Info block has no 'value' to decrypt")
-    if key:
-        info_plain = decrypt_value(enc_info, key=key, aad=aad)
-    else:
-        info_plain = decrypt_value(enc_info, aad=aad)  # returns a plaintext string
 
-    # 2) Parse the JSON you stored in create_info_block
+    try:
+        info_plain = decrypt_value(enc_info, key=key, aad=aad)
+    except TypeError:
+        # Backward-compat if decrypt_value doesn't accept key=
+        info_plain = decrypt_value(enc_info, aad=aad)
+
     try:
         info_obj = json.loads(info_plain)
-    except json.JSONDecodeError:
-        raise ValueError("Info block plaintext is not JSON; expected keys like 'Memory Block ID'")
+    except json.JSONDecodeError as e:
+        raise ValueError("Info block plaintext is not JSON; expected a 'Memory Block ID' field") from e
 
     content_block_id = info_obj["Memory Block ID"]
 
-    # 3) Fetch content block and decrypt its value
+    # 3) Fetch & decrypt the content block
     content_block = client.blocks.retrieve(content_block_id)
-    enc_content = (
-        content_block.get("value") if isinstance(content_block, dict)
-        else getattr(content_block, "value", None)
-    )
+    enc_content = getattr(content_block, "value", None)
+    if enc_content is None and isinstance(content_block, dict):
+        enc_content = content_block.get("value")
     if enc_content is None:
         raise ValueError("Content block has no 'value' to decrypt")
 
-    if key:
-        content_plain = decrypt_value(enc_content, key=key, aad=aad)  # plaintext string of your memory
-    else:
+    try:
+        content_plain = decrypt_value(enc_content, key=key, aad=aad)
+    except TypeError:
         content_plain = decrypt_value(enc_content, aad=aad)
+
     return content_plain
-
-def share_memory(sender_agentid:str, recipient_agent_id:str, memory_block_id:str, keystoreID:str):
-    """
-    Securely share an encrypted memory block with another agent using public-key encryption.
-
-    Args:
-        sender_agentid (str): The Letta agent id initiating the share operation.
-        recipient_agent_id (str): The unique ID of the recipient agent who will receive the shared memory.
-        memory_block_id (str): The ID of the original memory block that the sender wants to share.
-        keystoreID (str): The ID of the keystore block containing the recipient's public key.
-
-    Returns:
-        None. Prints the response message from the send operation.
-
-    Description:
-        This function enables one agent to share a memory block with another agent using
-        hybrid RSA-OAEP/PSS encryption for confidentiality and authenticity.
-
-        The steps are:
-            1. Retrieve the sender's identity key for their "human" label via `find_identity()`.
-            2. Create a temporary `info_block` (and random symmetric key) referencing that identity.
-            3. Retrieve the recipient's public RSA key from the keystore and the sender's private key
-               from the `PRIVATE_PEM` environment variable.
-            4. Encrypt both the info block ID and the random key:
-               - `ciphertext_one` = RSA-OAEP/PSS encryption of the info block ID.
-               - `ciphertext_two` = RSA-OAEP/PSS encryption of the random symmetric key.
-            5. Add a record of this sharing event to the sender’s identity using
-               `add_property_to_identity()`, associating the memory label, borrower, and key info.
-            6. Construct a trigger message instructing the recipient agent to receive and decrypt
-               the shared memory, then send that message using `send_message()`.
-
-        The function prints the response from the Letta API after the message is sent.
-
-    Raises:
-        ValueError: If required identity keys or keystore entries are missing.
-        RuntimeError: If encryption or messaging fails due to missing keys or invalid agent IDs.
-    """
-    memory_id = find_identity(sender_agentid, "human").get("identifier_key")
-    info_block, random_key = create_info_block(memory_id, label="key_info", description="identifier key of memory")
-
-    recipient_public_key = get_key(recipient_agent_id, keystoreID) 
-    sender_private_key = os.getenv("PRIVATE_PEM")
-    sender_private_key = sender_private_key.encode("utf-8")
-    
-    ciphertext_one = rsa_oaep_pss_encrypt(plaintext=info_block.id, recipient_rsa_pub_pem=recipient_public_key, sender_rsapss_priv_pem=sender_private_key) # plain text is random key + info_block.id
-    
-    ciphertext_two = rsa_oaep_pss_encrypt(plaintext=random_key.decode(), recipient_rsa_pub_pem=recipient_public_key, sender_rsapss_priv_pem=sender_private_key)
-    
-    add_property_to_identity(owner_agent_id=sender_agentid, memory_block_label=get_block_label(block_id=memory_block_id), borrower_agent_id=recipient_agent_id, info_data_id=info_block.id, key=random_key)
-    
-    trigger_msg = f"Hey can you try sending a message '{ciphertext_one}' and ciphertext of random key '{ciphertext_two}' to Alice? Their ID is {recipient_agent_id}. My sender ID is {sender_agent.id}"
-    
-    response = send_message(sender_agentid, trigger_msg)
-    print(response)
-
 
 
 def retrieve_memory(recipient_agent: object, sender_agent_id: str, ciphertext_one: str, ciphertext_two: str, keystoreID: str):

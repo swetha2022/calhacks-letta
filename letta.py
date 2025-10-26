@@ -223,7 +223,8 @@ agent_2 = create_agent(
 
 # 1) Read from the first attached info block
 info_block = client.agents.retrieve(agent_1.id).blocks[0]
-print(read_memory(info_block.get('id')))  # <- use .id (object), not .get('id')
+print("Info Block:", type(info_block.get("id")))
+print(read_memory(info_block.get("id")))  # <- use .id (object), not .get('id')
 
 # 2) Create a temp info block pointing at the owner's 'human' memory id
 owner_identity = find_identity(agent_1.id, "human")

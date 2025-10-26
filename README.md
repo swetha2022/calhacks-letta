@@ -23,11 +23,11 @@ Compliance‑friendly — Data minimization, scoped access, and deletion flows h
 
 # Core concepts
 
-*Memory Block*: The atomic unit of memory (payload + metadata). Has an owner, a policy, and a block id.
+**Memory Block**: The atomic unit of memory (payload + metadata). Has an owner, a policy, and a block id.
 
-*Owner*: The user/agent that created the block; only owners can grant or revoke access.
+**Owner**: The user/agent that created the block; only owners can grant or revoke access.
 
-*Permissions*:
+**Permissions**:
 
 *read*: view and decrypt the block
 
