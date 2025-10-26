@@ -1,9 +1,15 @@
 from letta_client import Letta
-from tooling import create_memory_block, createOwnerIdentity, create_info_block, find_identity, read_memory, get_client
+from tooling import create_info_block, find_identity, get_client
+from tools.read_memory import read_memory
+from tools.send_message import send_message
+from tools.create_memory_block import create_memory_block
+
+
+# from sharing import share_memory
 # import os
 
-from dotenv import load_dotenv #load env file
-load_dotenv()
+# from dotenv import load_dotenv #load env file
+# load_dotenv()
 
 # def get_client() -> Letta:
 #     token = os.getenv("LETTA_API_KEY")
@@ -16,76 +22,54 @@ load_dotenv()
 # client = Letta(token="sk-let-MWQzYTg2YTUtZGE4ZC00MWViLWJkMmYtZWMxY2NhOThkYzY3OjFjNjZkYzFhLWY5MWQtNDI3My04ZDJhLWEwYzc1ZjQwNTIxOA==")
 client = get_client()
 
-def create_agent(model_path, embedding_path, human_descriptor, persona_descriptor, tool):
+from pathlib import Path
+# code = Path("tooling.py").read_text()
+# client.tools.create(
+#     name="read_memory",
+#     description="Retrieve and decrypt memory via info block",
+#     source_code=code,
+# )
+# or upsert if your SDK supports it
+
+tools = []
+def define_agent_tools():
+    tools.append(client.tools.create(
+        source_code=Path("tools/read_memory.py").read_text(),
+    ))
+    tools.append(client.tools.create(
+        source_code=Path("tools/create_memory_block.py").read_text(),
+    ))
+    tools.append(client.tools.create(
+        source_code=Path("tools/ring_an_agent.py").read_text(),
+    ))
+    tools.append(client.tools.create(
+        source_code=Path("tools/send_message.py").read_text(),
+    ))
+
+
+define_agent_tools()
+
+def create_agent(model_path, embedding_path, human_descriptor, persona_descriptor):
     agent = client.agents.create(
         model=model_path,
         embedding=embedding_path,
-        # memory_blocks=[
-        #     {
-        #         "label": "human",
-        #         "value": human_descriptor
-        #     },
-        #     {
-        #         "label": "persona",
-        #         "value": persona_descriptor
-        #     }
-        # ],
-        tool_ids=[tool.id]
+        tool_ids=[t.id for t in tools],
     )
     create_memory_block(agent.id, label="human", value=human_descriptor, description="description of human")
     create_memory_block(agent.id, label="persona", value=persona_descriptor, description="description of persona")
     return agent
 
-def send_message(agent, content):
-    response = client.agents.messages.create(
-        agent_id=agent.id,
-        messages=[
-            {
-                "role": "user",
-                "content": content
-            }
-        ]
-    )
-    print(response)
-    return response.messages[-1].content
 
 
 
-def ring_an_agent(yourTarget: str, yourMessage: str):
-    """
-    Contact another agent living on Letta
 
-    Args:
-        yourTarget (str): The agent ID you want to contact
-        yourMessage (str): The message you want to send
-    """
-    # Import here so the symbol exists inside the tool sandbox
-    # from tooling import get_client
-    from letta_client import Letta
+# ring_an_agent_tool = client.tools.upsert_from_function(func=ring_an_agent)
+# print(f"Upserted function: {ring_an_agent_tool.id}")
 
-    client = Letta(token="sk-let-MWQzYTg2YTUtZGE4ZC00MWViLWJkMmYtZWMxY2NhOThkYzY3OjFjNjZkYzFhLWY5MWQtNDI3My04ZDJhLWEwYzc1ZjQwNTIxOA==")
-    # client = get_client()
-    response = client.agents.messages.create(
-        agent_id=yourTarget,
-        messages=[
-            {
-                "role": "user",
-                "content": yourMessage,
-            }
-        ],
-    )
-    return str(response)
+agent_1 = create_agent(model_path="openai/gpt-4o-mini", embedding_path="openai/text-embedding-3-small", human_descriptor="The human's name is Chad. They like vibe coding.", persona_descriptor="My name is Sam, a helpful assistant.")
+agent_2 = create_agent(model_path="openai/gpt-4o-mini", embedding_path="openai/text-embedding-3-small", human_descriptor="The human's name is Alice. They enjoy painting.", persona_descriptor="My name is Eve, a helpful assistant.") 
 
-ring_an_agent_tool = client.tools.upsert_from_function(func=ring_an_agent)
-print(f"Upserted function: {ring_an_agent_tool.id}")
 
-agent_1 = create_agent(model_path="openai/gpt-4o-mini", embedding_path="openai/text-embedding-3-small", human_descriptor="The human's name is Chad. They like vibe coding.", persona_descriptor="My name is Sam, a helpful assistant.", tool=ring_an_agent_tool)
-agent_2 = create_agent(model_path="openai/gpt-4o-mini", embedding_path="openai/text-embedding-3-small", human_descriptor="The human's name is Alice. They enjoy painting.", persona_descriptor="My name is Eve, a helpful assistant.", tool=ring_an_agent_tool) 
-
-# trigger_msg = f"Hey can you try sending a message 'hi there!' to Alice? Their ID is {agent_2.id}"
-
-# response = send_message(agent_1, trigger_msg)
-# print(response)
 
 #TEST 
 #read from info block to get memory block content
@@ -103,6 +87,6 @@ info_block, _ = create_info_block(identifier_key, label="key_info", description=
 # trigger_msg = f"Hey can you try sending a message '{memory_id_to_send}' to Alice? Their ID is {agent_2.id}"
 trigger_msg = f"Hey can you try sending a message '{info_block.id}' to Alice? Their ID is {agent_2.id}"
 
-response = send_message(agent_1, trigger_msg)
+response = send_message(agent_1.id, trigger_msg)
 print(response)
 
