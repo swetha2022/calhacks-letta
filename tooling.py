@@ -717,7 +717,7 @@ def send_message(agentid:str, content:str):
             }
         ]
     )
-    print(response)
+    # print(response)
     return response.messages[-1].content
 
 

@@ -221,21 +221,23 @@ agent_2 = create_agent(
 
 # TESTS
 
+#first 
+
 # 1) Read from the first attached info block
-info_block = client.agents.retrieve(agent_1.id).blocks[0]
-print("Info Block:", type(info_block.get("id")))
-print(read_memory(info_block.get("id")))  # <- use .id (object), not .get('id')
+# info_block = client.agents.retrieve(agent_1.id).blocks[0]
+# print("Info Block:", type(info_block.get("id")))
+# print(read_memory(info_block.get("id")))  # <- use .id (object), not .get('id')
 
-# 2) Create a temp info block pointing at the owner's 'human' memory id
-owner_identity = find_identity(agent_1.id, "human")
-identifier_key = owner_identity.identifier_key if hasattr(owner_identity, "identifier_key") else owner_identity.get("identifier_key")
-print(identifier_key)
+# # 2) Create a temp info block pointing at the owner's 'human' memory id
+# owner_identity = find_identity(agent_1.id, "human")
+# identifier_key = owner_identity.identifier_key if hasattr(owner_identity, "identifier_key") else owner_identity.get("identifier_key")
+# print(identifier_key)
 
-info_block, _ = create_info_block(identifier_key, label="key_info", description="identifier key of memory")
+# info_block, _ = create_info_block(identifier_key, label="key_info", description="identifier key of memory")
 
-trigger_msg = f"Hey can you try sending a message '{info_block.id}' to Alice? Their ID is {agent_2.id}"
+trigger_msg = f"Hey can you create a memory that contains the value '12345' then share it to Alice? Their ID is {agent_2.id}"
 response = send_message(agent_1.id, trigger_msg)
 print(response)
 
-response = send_message(agent_2.id, f"Hey can you read the memory block whose info block id is '{info_block.id}'?")
+response = send_message(agent_2.id, f"Hey can you read the shared memory (use retrieve memory) given what {agent_1.id} just shared with you then tell me what memory you just learned?")
 print(response)
