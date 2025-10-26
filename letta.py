@@ -1,6 +1,11 @@
 from letta_client import Letta
 from tooling import create_memory_block
 
+
+from dotenv import load_dotenv #load env file
+load_dotenv()
+
+
 client = Letta(token="sk-let-MWQzYTg2YTUtZGE4ZC00MWViLWJkMmYtZWMxY2NhOThkYzY3OjFjNjZkYzFhLWY5MWQtNDI3My04ZDJhLWEwYzc1ZjQwNTIxOA==")
 
 def create_agent(model_path, embedding_path, human_descriptor, persona_descriptor, tool):
