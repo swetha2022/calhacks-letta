@@ -77,6 +77,18 @@ def find_identity(agent_id, memory_block_label):
             return i
     return None
 
+def add_property_to_identity(owner_agent_id, memory_block_label: str, borrower_agent_id, info_data_id, key):
+    client = get_client()
+    identity = find_identity(owner_agent_id, memory_block_label) # use owner agent id and memory block label to find identity
+    if identity: # Only do this if identity is found
+        new_property = {
+            "borrower_id": borrower_agent_id,
+            "info_data_id": info_data_id,
+            "key": key,
+        } # create new property
+        props = identity.properties #get the properties list so we can append the new property
+        props.append(new_property)
+        client.identities.modify(identity_id=identity.id, properties=props) # modify the identity with the updated properties
 
 def get_block_label(block_id: str) -> str | None:
     """Return the label of a block given its block_id."""
