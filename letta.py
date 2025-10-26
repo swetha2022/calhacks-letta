@@ -3,6 +3,9 @@ from tooling import create_info_block, find_identity, get_client
 from tools.read_memory import read_memory
 from tools.send_message import send_message
 from tools.create_memory_block import create_memory_block
+from keystore import create_keystore, set_key
+from crypto import generate_rsa_keypair
+import os
 
 
 # from sharing import share_memory
@@ -24,13 +27,6 @@ client = get_client()
 keystoreID=create_keystore().id
 
 from pathlib import Path
-# code = Path("tooling.py").read_text()
-# client.tools.create(
-#     name="read_memory",
-#     description="Retrieve and decrypt memory via info block",
-#     source_code=code,
-# )
-# or upsert if your SDK supports it
 
 tools = []
 def define_agent_tools():
@@ -46,6 +42,9 @@ def define_agent_tools():
     tools.append(client.tools.create(
         source_code=Path("tools/send_message.py").read_text(),
     ))
+    tools.append(client.tools.create(
+        source_code=Path("tools/share_memory.py").read_text(),
+    ))
 
 
 define_agent_tools()
@@ -54,11 +53,11 @@ def create_agent(model_path, embedding_path, human_descriptor, persona_descripto
     agent = client.agents.create(
         model=model_path,
         embedding=embedding_path,
-        tool_ids=[tool.id]
+        tool_ids=[tool.id for tool in tools],
     )
-    privatepem, publicpem = generate_rsa_keypair(os.getenv("MASTER_PRIVATE_KEY"))
+    privatepem, publicpem = generate_rsa_keypair()
     #store private pem
-    os.environ["PRIVATE_PEM"] = privatepem
+    os.environ["PRIVATE_PEM"] = str(privatepem)
 
     #store public pem in Keystore
     set_key(agentid=agent.id, pubpem=publicpem, keystoreID=keystoreID)

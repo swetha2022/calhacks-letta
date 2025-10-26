@@ -1,6 +1,6 @@
 from __future__ import annotations
 import os, json
-from typing import Optional
+from typing import Optional, Union
 
 from dotenv import load_dotenv #load env file
 load_dotenv()
@@ -28,6 +28,34 @@ def get_client() -> Letta:
     token = token.strip().strip('"').strip("'")  # guard against pasted quotes/spaces
     base_url = os.getenv("LETTA_API_BASE_URL")   # set if self-hosting; omit for cloud
     return Letta(token=token, base_url=base_url) if base_url else Letta(token=token)
+
+def derive_key(label: str, salt: bytes, length: int = 32) -> bytes:
+    """
+    Derive a single key (e.g., encryption or authentication) from the master key using HKDF.
+
+    Args:
+        label: Either "enc" or "auth" — determines the key domain.
+        salt:  A per-memory or per-session salt (e.g., memory ID bytes).
+        length: Desired key length in bytes (default 32).
+    """
+    # Load master key from environment (expected as hex string)
+    master_hex = os.getenv("MASTER_PRIVATE_KEY")
+    if not master_hex:
+        raise ValueError("Missing environment variable: MASTER_PRIVATE_KEY")
+
+    try:
+        master_key = binascii.unhexlify(master_hex)
+    except Exception as e:
+        raise ValueError("MASTER_PRIVATE_KEY must be a valid hex string") from e
+
+    hkdf = HKDF(
+        algorithm=hashes.SHA256(),
+        length=length,
+        salt=salt,
+        info=f"letta/agent-memory/v1/{label}".encode("utf-8"),  # domain separation
+    )
+    derived_key = hkdf.derive(master_key)
+    return derived_key
 
 
 def create_info_block(memory_block_id, label, description):
@@ -58,10 +86,25 @@ def create_info_block(memory_block_id, label, description):
 #     decrypted_content = decrypt_value(content_block) # Decrypt content block value
 #     return decrypted_content.value # Return data associated with content block
 
-def read_memory(info_block_or_id, key = Optional[bytes], aad: bytes | None = None) -> str:
+def read_memory(info_block_or_id = Union[str, dict, object], key = Optional[bytes], aad: bytes | None = None) -> str:
     """
-    Given an *info* block (id/obj/dict), decrypt it to get the referenced
-    content block id, then fetch & decrypt the content block and return plaintext.
+    Retrieve and decrypt a memory block's plaintext content from encrypted storage.
+
+    This function accepts either a block ID, a dictionary, or an SDK object representing
+    an "info block". It first decrypts the info block to obtain the corresponding
+    "content block" ID, then fetches and decrypts the content block to return
+    the original plaintext string.
+
+    Args:
+        info_block_or_id (str | dict | object): The info block or its unique ID.
+            If a string ID is provided, the corresponding block is fetched via the client.
+        key (Optional[bytes]): Optional symmetric key used for decryption.
+            If not provided, a default or preconfigured key may be used.
+        aad (bytes | None): Optional Additional Authenticated Data (AAD)
+            used to authenticate the decryption process.
+
+    Returns:
+        str: The decrypted plaintext string contained in the content block.
     """
     client = get_client()
 
@@ -156,33 +199,7 @@ def get_block_label(block_id: str) -> str | None:
 
 
 
-def derive_key(label: str, salt: bytes, length: int = 32) -> bytes:
-    """
-    Derive a single key (e.g., encryption or authentication) from the master key using HKDF.
 
-    Args:
-        label: Either "enc" or "auth" — determines the key domain.
-        salt:  A per-memory or per-session salt (e.g., memory ID bytes).
-        length: Desired key length in bytes (default 32).
-    """
-    # Load master key from environment (expected as hex string)
-    master_hex = os.getenv("MASTER_PRIVATE_KEY")
-    if not master_hex:
-        raise ValueError("Missing environment variable: MASTER_PRIVATE_KEY")
-
-    try:
-        master_key = binascii.unhexlify(master_hex)
-    except Exception as e:
-        raise ValueError("MASTER_PRIVATE_KEY must be a valid hex string") from e
-
-    hkdf = HKDF(
-        algorithm=hashes.SHA256(),
-        length=length,
-        salt=salt,
-        info=f"letta/agent-memory/v1/{label}".encode("utf-8"),  # domain separation
-    )
-    derived_key = hkdf.derive(master_key)
-    return derived_key
 
 def encrypt_value(label: str, plaintext: str, aad: bytes | None = None) -> str:
     """
