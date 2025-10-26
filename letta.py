@@ -45,6 +45,9 @@ def define_agent_tools():
     tools.append(client.tools.create(
         source_code=Path("tools/share_memory.py").read_text(),
     ))
+    tools.append(client.tools.create(
+        source_code=Path("tools/retrieve_memory.py").read_text(),
+    ))
 
 
 define_agent_tools()
@@ -66,12 +69,6 @@ def create_agent(model_path, embedding_path, human_descriptor, persona_descripto
     create_memory_block(agent.id, label="persona", value=persona_descriptor, description="description of persona")
     return agent
 
-
-
-
-
-# ring_an_agent_tool = client.tools.upsert_from_function(func=ring_an_agent)
-# print(f"Upserted function: {ring_an_agent_tool.id}")
 
 agent_1 = create_agent(model_path="openai/gpt-4o-mini", embedding_path="openai/text-embedding-3-small", human_descriptor="The human's name is Chad. They like vibe coding.", persona_descriptor="My name is Sam, a helpful assistant.")
 agent_2 = create_agent(model_path="openai/gpt-4o-mini", embedding_path="openai/text-embedding-3-small", human_descriptor="The human's name is Alice. They enjoy painting.", persona_descriptor="My name is Eve, a helpful assistant.") 

@@ -47,22 +47,3 @@ def share_memory(sender_agent, recipient_agent_id, memory_block_id):
     print(response)
 
 
-def retrieve_memory(recipient_agent, sender_agent_id, ciphertext_one, ciphertext_two): 
-    recipient_private_key = os.getenv("PRIVATE_PEM")
-    sender_public_key = get_key(sender_agent_id, keystoreID) 
-
-    plaintext_one = rsa_oaep_pss_decrypt(bundle_json=ciphertext_one, recipient_rsa_priv_pem=recipient_private_key, sender_rsapss_pub_pem=sender_public_key)
-    plaintext_two = rsa_oaep_pss_decrypt(bundle_json=ciphertext_two, recipient_rsa_priv_pem=recipient_private_key, sender_rsapss_pub_pem=sender_public_key)
-
-    info_block_id = plaintext_one
-    random_key = plaintext_two.encode()
-
-    memory_block_content = read_memory(info_block_or_id=info_block_id, key=random_key)
-
-    create_memory_block(agentid=recipient_agent.id, label="persona", value=memory_block_content, description='shared memory from ' + sender_agent_id)
-    
-    
-    
-
-
-   

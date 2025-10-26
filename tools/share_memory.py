@@ -39,6 +39,14 @@ def create_info_block(memory_block_id, label, description):
     return info_block, key
 
 def get_key(agentid, keystoreID):
+    """
+    Retrieve the stored public key (PEM string) for a given agent
+    from a keystore block in Letta.
+
+    The keystore block's `.value` field is expected to contain a JSON
+    string mapping agent IDs to their corresponding public keys.
+
+    """
     client = get_client()
     keystoreBlock = client.blocks.retrieve(keystoreID) #get keystore block
 
