@@ -1,4 +1,7 @@
 from letta_client import Letta
+from letta_client.client import BaseTool
+from pydantic import BaseModel
+from typing import Type
 
 client = Letta(token="sk-let-MWQzYTg2YTUtZGE4ZC00MWViLWJkMmYtZWMxY2NhOThkYzY3OjFjNjZkYzFhLWY5MWQtNDI3My04ZDJhLWEwYzc1ZjQwNTIxOA==")
 
@@ -46,6 +49,49 @@ def detach_tool(agent, tool_id):
         tool_id=tool_id,
     )    
 
+# class MsgSendArgs(BaseModel):
+#     target_agent_id: str
+#     message_contents: str
+
+# class MsgSendTool(BaseTool):
+#     name: str = "msg_send"
+#     args_schema: Type[BaseModel] = MsgSendArgs
+#     description: str = "Send a custom message to another agent."
+
+#     def __init__(self, client):
+#         super().__init__()
+#         self.client = client
+
+#     def run(self, target_agent_id, message_contents):
+#         response = client.agents.send_message_async(
+#             agent_id=target_agent_id,
+#             message=message_contents,
+#         )
+#         return response 
+
+def msg_send_agent(agentId: str, message: str):
+    """
+    Send a message to another agent.
+
+    Args:
+        agentId (str): The ID of the target agent to send a message to.
+        message (str): The message content.
+
+    Returns:
+        The response from the agent after receiving the message.
+    """
+    from letta_client import Letta
+    client = Letta(token="sk-let-MWQzYTg2YTUtZGE4ZC00MWViLWJkMmYtZWMxY2NhOThkYzY3OjFjNjZkYzFhLWY5MWQtNDI3My04ZDJhLWEwYzc1ZjQwNTIxOA==")
+    
+    response = client.agents.messages.create(
+        agent_id=agentId,
+        messages=[{
+            "role": "user",
+            "content": f"[message from another agent] {message}"
+        }]
+    )
+    return str(response)
+
 def modify_memory(agent, block_label, updated_value): 
     client.agents.blocks.modify(
         agent_id=agent.id,
@@ -59,10 +105,12 @@ def retrieve_memory_block(agent, block_label):
         block_label=block_label
     )
 
-agent_1 = create_agent(model_path="openai/gpt-4o-mini", embedding_path="openai/text-embedding-3-small", human_descriptor="The human's name is Chad. They like vibe coding.", persona_descriptor="My name is Sam, a helpful assistant.", tags=["agent_1"], tools=["web_search", "run_code", "send_message_to_agents_matching_all_tags"])
-agent_2 = create_agent(model_path="openai/gpt-4o-mini", embedding_path="openai/text-embedding-3-small", human_descriptor="The human's name is Alice. They enjoy painting.", persona_descriptor="My name is Eve, a helpful assistant.", tags=["agent_2"], tools=["web_search", "run_code", "send_message_to_agents_matching_all_tags"]) 
+tool = client.tools.create_from_function(func=msg_send_agent)
+#tool = client.tools.upsert_from_function(func=msg_send_agent)
+agent_1 = create_agent(model_path="openai/gpt-4o-mini", embedding_path="openai/text-embedding-3-small", human_descriptor="The human's name is Chad. They like vibe coding.", persona_descriptor="My name is Sam, a helpful assistant.", tags=["agent_1"], tools=["web_search", "run_code", "msg_send_agent"])
+agent_2 = create_agent(model_path="openai/gpt-4o-mini", embedding_path="openai/text-embedding-3-small", human_descriptor="The human's name is Alice. They enjoy painting.", persona_descriptor="My name is Eve, a helpful assistant.", tags=["agent_2"], tools=["web_search", "run_code", "msg_send_agent"]) 
 
-query_agent2 = f"Hey - just letting you know I'm going to connect you with another one of my agent buddies. Hope you enjoy chatting with them (I think they'll reach out directly). When you receive their message, send a message back to agent with tag agent_1."
+query_agent2 = f"Hey - just letting you know I'm going to connect you with another one of my agent buddies. Hope you enjoy chatting with them (I think they'll reach out directly). When you receive their message, send a message back to the agent."
 print(send_message(agent_2, query_agent2))
 print() 
 
