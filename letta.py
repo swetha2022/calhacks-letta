@@ -1,28 +1,24 @@
 from letta_client import Letta
-from tools import derive_key, create_memory_block
+from tooling import create_memory_block
 
 client = Letta(token="sk-let-MWQzYTg2YTUtZGE4ZC00MWViLWJkMmYtZWMxY2NhOThkYzY3OjFjNjZkYzFhLWY5MWQtNDI3My04ZDJhLWEwYzc1ZjQwNTIxOA==")
 
-def create_agent(model_path, embedding_path, human_descriptor, persona_descriptor, tags, tools):
+def create_agent(model_path, embedding_path, human_descriptor, persona_descriptor, tool):
     agent = client.agents.create(
         model=model_path,
         embedding=embedding_path,
-        # memory_blocks=[
-        #     {
-        #         "label": "human",
-        #         "value": human_descriptor
-        #     },
-        #     {
-        #         "label": "persona",
-        #         "value": persona_descriptor
-        #     }
-        # ],
-        tags=tags,
-        tools=tools
+        memory_blocks=[
+            {
+                "label": "human",
+                "value": human_descriptor
+            },
+            {
+                "label": "persona",
+                "value": persona_descriptor
+            }
+        ],
+        tool_ids=[tool.id]
     )
-    #add human and persona memories
-    create_memory_block(agent.id, label="human", value=human_descriptor)
-    create_memory_block(agent.id, label="persona", value=persona_descriptor)
     return agent
 
 def send_message(agent, content):
@@ -35,41 +31,50 @@ def send_message(agent, content):
             }
         ]
     )
+    print(response)
     return response.messages[-1].content
-     
 
-def attach_tool(agent, tool_id):
-    client.agents.tools.attach(
-        agent_id=agent.id,
-        tool_id=tool_id,
+def ring_an_agent(yourTarget: str, yourMessage: str):
+    """
+    Contact another agent living on Letta
+
+    Args:
+        yourTarget (str): The agent ID you want to contact
+        yourMessage (str): The message you want to send
+    """
+    from letta_client import Letta
+
+    client = Letta(token="sk-let-MWQzYTg2YTUtZGE4ZC00MWViLWJkMmYtZWMxY2NhOThkYzY3OjFjNjZkYzFhLWY5MWQtNDI3My04ZDJhLWEwYzc1ZjQwNTIxOA==")
+
+    response = client.agents.messages.create(
+        agent_id=yourTarget,
+        messages=[
+            {
+                "role": "user",
+                "content": yourMessage,
+            }
+        ],
     )
+    return str(response)
 
-def detach_tool(agent, tool_id):
-    client.agents.tools.detach(
-        agent_id=agent.id,
-        tool_id=tool_id,
-    )    
+ring_an_agent_tool = client.tools.upsert_from_function(func=ring_an_agent)
+print(f"Upserted function: {ring_an_agent_tool.id}")
 
-def modify_memory(agent, block_label, updated_value): 
-    client.agents.blocks.modify(
-        agent_id=agent.id,
-        block_label=block_label,
-        value=updated_value
-    )
+agent_1 = create_agent(model_path="openai/gpt-4o-mini", embedding_path="openai/text-embedding-3-small", human_descriptor="The human's name is Chad. They like vibe coding.", persona_descriptor="My name is Sam, a helpful assistant.", tool=ring_an_agent_tool)
+agent_2 = create_agent(model_path="openai/gpt-4o-mini", embedding_path="openai/text-embedding-3-small", human_descriptor="The human's name is Alice. They enjoy painting.", persona_descriptor="My name is Eve, a helpful assistant.", tool=ring_an_agent_tool) 
 
-def retrieve_memory_block(agent, block_label):
-    return client.agents.blocks.retrieve(
-        agent_id=agent.id,
-        block_label=block_label
-    )
+# trigger_msg = f"Hey can you try sending a message 'hi there!' to Alice? Their ID is {agent_2.id}"
 
-agent_1 = create_agent(model_path="openai/gpt-4o-mini", embedding_path="openai/text-embedding-3-small", human_descriptor="The human's name is Chad. They like vibe coding.", persona_descriptor="My name is Sam, a helpful assistant.", tags=["agent_1"], tools=["web_search", "run_code", "send_message_to_agents_matching_all_tags"])
-agent_2 = create_agent(model_path="openai/gpt-4o-mini", embedding_path="openai/text-embedding-3-small", human_descriptor="The human's name is Alice. They enjoy painting.", persona_descriptor="My name is Eve, a helpful assistant.", tags=["agent_2"], tools=["web_search", "run_code", "send_message_to_agents_matching_all_tags"]) 
+# response = send_message(agent_1, trigger_msg)
+# print(response)
 
-query_agent2 = f"Hey - just letting you know I'm going to connect you with another one of my agent buddies. Hope you enjoy chatting with them (I think they'll reach out directly). When you receive their message, send a message back to agent with tag agent_1."
-print(send_message(agent_2, query_agent2))
-print() 
+# def create_memory_block(agentid, label: str, value: str, description: str):"
+create_memory_block(agent_1.id, label="prices", value="prefers $50 maximum for car rentals and $150 per night for hotels", description="customer price range for travel")
+identities = client.agents.retrieve(agent_1.id).identities
+print("here are my identities:")
+print(identities)
+memory_id_to_send = identities[0]
+trigger_msg = f"Hey can you try sending a message '{memory_id_to_send}' to Alice? Their ID is {agent_2.id}"
 
-query_agent1 = f"Hey, my other agent friend is lonely and needs someone to chat to. Can you give them a ring? Their ID is {agent_2.id}. If you can reach them, they will message back and tell me what they said."
-print(send_message(agent_1, query_agent1))
-print()
+response = send_message(agent_1, trigger_msg)
+print(response)
