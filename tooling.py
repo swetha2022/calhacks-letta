@@ -65,7 +65,8 @@ def create_info_block(memory_block_id, label, description):
     info_block = client.blocks.create(
         label=f"info-{label}",
         description=description,
-        value=f"Memory Block ID: {memory_block_id}, Label: {label}, Key: {derive_key(label, salt=memory_block_id.encode(), length=32).hex()}",
+        value = f'{{"Memory Block ID": "{memory_block_id}", "Label": "{label}", "Key": "{derive_key(label, salt=memory_block_id.encode(), length=32).hex()}"}}'
+
     )
     return info_block
 
