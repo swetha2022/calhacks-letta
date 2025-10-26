@@ -3,6 +3,7 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes
 import os
 import binascii
+from letta_client import Letta
 
 @tool
 def derive_key(label: str, salt: bytes, length: int = 32) -> bytes:
@@ -39,15 +40,16 @@ def create_memory_block(agentid, label: str, value: str, description: str):
     """
     create a memory block mapped to an info block that contains a key, location to memory block, and the label. Return info block.
     """
-    #TODO CREATE BLOCK FUNCTION LATER
-    memory_block = create_block(
+    token = os.getenv("LETTA_API_KEY")
+    client = Letta(token=token)
+    memory_block = client.blocks.create(
         label=label,
         description=description,
-        value=value,
-    )
+        value=value)
+
     info_block = create_info_block(memory_block.id, label, description)
     #attach info_block to agent and return info_block.id
-    attack_block_to_agent(agentid, info_block.id)
+    client.agents.blocks.attach(info_block.id, agentid)
     return info_block.id
 
 def create_info_block(memory_block_id, label, description):
@@ -60,3 +62,11 @@ def create_info_block(memory_block_id, label, description):
         value=f"Memory Block ID: {memory_block_id}, Label: {label}, Key: {derive_key(label, salt=memory_block_id.encode(), length=32).hex()}",
     )
     return info_block
+
+# def read_memory_block():
+
+
+# @tool
+# def test():
+#     client - os.getenv(letapikey)
+#     identities = client.agents.retrieve(agent_state.id).idnetities
