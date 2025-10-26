@@ -59,8 +59,28 @@ def createOwnerIdentity(agentid, memoryid):
     identity = client.identities.create(
         agent_ids=[agentid], #owner
         identifier_key=str(memoryid), #memory block
-        name=str(memoryid), 
+        name=get_block_label(memoryid), 
         identity_type="other",
         properties=[] #sharer info to be filled when shared later
     )
     return identity
+
+
+def find_identity(agent_id, memory_block_label):
+    """Given an agent_id and a memory_block_label (e.g. 'human'),
+    return the identity object (dict) whose name matches."""
+    client = get_client()
+    agent = client.agents.retrieve(agent_id)
+
+    for i in agent.identities or []:
+        if i.get("name") == memory_block_label:
+            return i
+    return None
+
+
+def get_block_label(block_id: str) -> str | None:
+    """Return the label of a block given its block_id."""
+    client = get_client()
+    block = client.blocks.retrieve(block_id)
+    # block is usually a dict-like object
+    return block.label

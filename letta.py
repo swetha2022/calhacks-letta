@@ -1,29 +1,32 @@
 from letta_client import Letta
-from tooling import create_memory_block, createOwnerIdentity, create_info_block
+from tooling import create_memory_block, createOwnerIdentity, create_info_block, get_client, find_identity
 
 
 from dotenv import load_dotenv #load env file
 load_dotenv()
 
 
-client = Letta(token="sk-let-MWQzYTg2YTUtZGE4ZC00MWViLWJkMmYtZWMxY2NhOThkYzY3OjFjNjZkYzFhLWY5MWQtNDI3My04ZDJhLWEwYzc1ZjQwNTIxOA==")
+# client = Letta(token="sk-let-MWQzYTg2YTUtZGE4ZC00MWViLWJkMmYtZWMxY2NhOThkYzY3OjFjNjZkYzFhLWY5MWQtNDI3My04ZDJhLWEwYzc1ZjQwNTIxOA==")
+client = get_client()
 
 def create_agent(model_path, embedding_path, human_descriptor, persona_descriptor, tool):
     agent = client.agents.create(
         model=model_path,
         embedding=embedding_path,
-        memory_blocks=[
-            {
-                "label": "human",
-                "value": human_descriptor
-            },
-            {
-                "label": "persona",
-                "value": persona_descriptor
-            }
-        ],
+        # memory_blocks=[
+        #     {
+        #         "label": "human",
+        #         "value": human_descriptor
+        #     },
+        #     {
+        #         "label": "persona",
+        #         "value": persona_descriptor
+        #     }
+        # ],
         tool_ids=[tool.id]
     )
+    create_memory_block(agent.id, label="human", value=human_descriptor, description="description of human")
+    create_memory_block(agent.id, label="persona", value=persona_descriptor, description="description of persona")
     return agent
 
 def send_message(agent, content):
@@ -38,6 +41,8 @@ def send_message(agent, content):
     )
     print(response)
     return response.messages[-1].content
+
+
 
 def ring_an_agent(yourTarget: str, yourMessage: str):
     """
@@ -74,15 +79,17 @@ agent_2 = create_agent(model_path="openai/gpt-4o-mini", embedding_path="openai/t
 # print(response)
 
 # get identifier key of existing memory block then create info block and send id of that info block
-human_block = client.agents.blocks.retrieve(
-    agent_id=agent_1.id,
-    block_label="human"
-)
-identifier_key = createOwnerIdentity(agent_1.id, human_block.id).identifier_key
+# human_block = client.agents.blocks.retrieve(
+#     agent_id=agent_1.id,
+#     block_label="human"
+# )
+identifier_key = find_identity(agent_1.id, "human").get("identifier_key")
+
+print(identifier_key)
 info_block = create_info_block(identifier_key, label="key_info", description="identifier key of memory")
 
 # create_memory_block(agent_1.id, label="prices", value="prefers $50 maximum for car rentals and $150 per night for hotels", description="customer price range for travel")
-# identities = client.agents.retrieve(agent_1.id).identities
+# identities = 
 # print("here are my identities:")
 # print(identities)
 # memory_id_to_send = identities[0]
@@ -91,3 +98,4 @@ trigger_msg = f"Hey can you try sending a message '{info_block.id}' to Alice? Th
 
 response = send_message(agent_1, trigger_msg)
 print(response)
+

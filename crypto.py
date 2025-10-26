@@ -1,3 +1,11 @@
+from __future__ import annotations
+from typing import Optional
+
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
+from cryptography.hazmat.primitives.asymmetric import utils as asym_utils
+from cryptography.exceptions import InvalidSignature
+
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -93,17 +101,6 @@ def decrypt_value(enc_bundle_json: str, aad: bytes | None = None) -> str:
 
 
 ##PUBLIC KEY ENCRYPTION WITH RSA OAEP AND SIGNING WITH RSA PSS##
-
-from __future__ import annotations
-import json, binascii
-from typing import Optional
-from base64 import b64encode, b64decode
-
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import padding, rsa
-from cryptography.hazmat.primitives.asymmetric import utils as asym_utils
-from cryptography.exceptions import InvalidSignature
-
 # -------- helpers --------
 SCHEME_ID = "RSA-OAEP(SHA-256)+RSA-PSS(SHA-256)"
 SIG_CTX = b"letta-signed-rsa-oaep-v1"
