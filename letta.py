@@ -1,10 +1,17 @@
 from letta_client import Letta
-from tooling import create_memory_block, createOwnerIdentity, create_info_block, get_client, find_identity
-
+from tooling import create_memory_block, createOwnerIdentity, create_info_block, find_identity, read_memory, get_client
+# import os
 
 from dotenv import load_dotenv #load env file
 load_dotenv()
 
+# def get_client() -> Letta:
+#     token = os.getenv("LETTA_API_KEY")
+#     if not token or not token.strip():
+#         raise ValueError("LETTA_API_KEY missing/empty (check your .env and that load_dotenv() ran)")
+#     token = token.strip().strip('"').strip("'")  # guard against pasted quotes/spaces
+#     base_url = os.getenv("LETTA_API_BASE_URL")   # set if self-hosting; omit for cloud
+#     return Letta(token=token, base_url=base_url) if base_url else Letta(token=token)
 
 # client = Letta(token="sk-let-MWQzYTg2YTUtZGE4ZC00MWViLWJkMmYtZWMxY2NhOThkYzY3OjFjNjZkYzFhLWY5MWQtNDI3My04ZDJhLWEwYzc1ZjQwNTIxOA==")
 client = get_client()
@@ -52,10 +59,12 @@ def ring_an_agent(yourTarget: str, yourMessage: str):
         yourTarget (str): The agent ID you want to contact
         yourMessage (str): The message you want to send
     """
+    # Import here so the symbol exists inside the tool sandbox
+    # from tooling import get_client
     from letta_client import Letta
 
     client = Letta(token="sk-let-MWQzYTg2YTUtZGE4ZC00MWViLWJkMmYtZWMxY2NhOThkYzY3OjFjNjZkYzFhLWY5MWQtNDI3My04ZDJhLWEwYzc1ZjQwNTIxOA==")
-
+    # client = get_client()
     response = client.agents.messages.create(
         agent_id=yourTarget,
         messages=[
@@ -78,21 +87,19 @@ agent_2 = create_agent(model_path="openai/gpt-4o-mini", embedding_path="openai/t
 # response = send_message(agent_1, trigger_msg)
 # print(response)
 
+#TEST 
+#read from info block to get memory block content
+#get info block id first
+info_block = client.agents.retrieve(agent_1.id).blocks[0] #get first block attached to agent
+print(read_memory(info_block.get('id')))
+
+
 # get identifier key of existing memory block then create info block and send id of that info block
-# human_block = client.agents.blocks.retrieve(
-#     agent_id=agent_1.id,
-#     block_label="human"
-# )
 identifier_key = find_identity(agent_1.id, "human").get("identifier_key")
 
 print(identifier_key)
-info_block = create_info_block(identifier_key, label="key_info", description="identifier key of memory")
+info_block, _ = create_info_block(identifier_key, label="key_info", description="identifier key of memory")
 
-# create_memory_block(agent_1.id, label="prices", value="prefers $50 maximum for car rentals and $150 per night for hotels", description="customer price range for travel")
-# identities = 
-# print("here are my identities:")
-# print(identities)
-# memory_id_to_send = identities[0]
 # trigger_msg = f"Hey can you try sending a message '{memory_id_to_send}' to Alice? Their ID is {agent_2.id}"
 trigger_msg = f"Hey can you try sending a message '{info_block.id}' to Alice? Their ID is {agent_2.id}"
 

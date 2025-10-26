@@ -72,7 +72,7 @@ def encrypt_value(label: str, plaintext: str, aad: bytes | None = None) -> str:
         "ct_b64": b64encode(ct).decode("ascii"),
         # NOTE: AAD is not stored; if you use AAD, the decryptor must supply the same bytes.
     }
-    return json.dumps(bundle, separators=(",", ":"))
+    return json.dumps(bundle, separators=(",", ":")), key
 
 def decrypt_value(enc_bundle_json: str, aad: bytes | None = None) -> str:
     """

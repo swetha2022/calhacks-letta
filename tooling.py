@@ -1,5 +1,5 @@
 # from letta import tool
-import os 
+import os, json
 
 from dotenv import load_dotenv #load env file
 load_dotenv()
@@ -22,12 +22,14 @@ def create_memory_block(agentid, label: str, value: str, description: str):
     create a memory block mapped to an info block that contains a key, location to memory block, and the label. Return info block.
     """
     client = get_client()
+    encrypted_value, _ = encrypt_value("enc", value)
+
     memory_block = client.blocks.create(
         label=label,
         description=description,
-        value=encrypt_value("enc", value),
+        value=encrypted_value,
     )
-    info_block = create_info_block(memory_block.id, label, description="None")
+    info_block, _ = create_info_block(memory_block.id, label, description="None")
     #attach info_block to agent and return info_block.id
     client.agents.blocks.attach(agent_id=agentid, block_id=info_block.id)
 
@@ -40,14 +42,70 @@ def create_info_block(memory_block_id, label, description):
     create an info block that contains a key, location to memory block, and the label. Return info block.
     """
     client = get_client()
-    value = f"Memory Block ID: {memory_block_id}, Label: {label}, Key: {derive_key(label, salt=memory_block_id.encode(), length=32).hex()}"
+    value = f'{{"Memory Block ID": "{memory_block_id}", "Label": "{label}", "Key": "{derive_key(label, salt=memory_block_id.encode(), length=32).hex()}"}}'
+    encrypted_value, key = encrypt_value("enc", value)
     info_block = client.blocks.create(
         label=f"info-{label}",
         description=description,
-        value=encrypt_value("enc", value),
+        value=encrypted_value,
     )
-    return info_block
+    return info_block, key
 
+# def read_memory(info_block_id) -> str:
+#     """"
+#     Given an info_block_id, go to the actual content block ID and read from the memory block
+#     """
+#     client = get_client()
+#     info_block = client.blocks.retrieve(info_block_id) # Retrieve the info_block
+#     print("decrypting info block...")
+#     # print(decrypt_value(info_block))
+#     info_block_dict = json.loads(decrypt_value(info_block).values) # Get value (description) as a dictionary
+#     content_block_id = info_block_dict['Memory Block ID'] # Get content_block ID from dict
+#     content_block = client.blocks.retrieve(content_block_id) # Retrieve content block from ID
+#     decrypted_content = decrypt_value(content_block) # Decrypt content block value
+#     return decrypted_content.value # Return data associated with content block
+
+def read_memory(info_block_or_id, aad: bytes | None = None) -> str:
+    """
+    Given an *info* block (id/obj/dict), decrypt it to get the referenced
+    content block id, then fetch & decrypt the content block and return plaintext.
+    """
+    client = get_client()
+
+    # Normalize: accept id, dict, or SDK object for the info block
+    if isinstance(info_block_or_id, str):
+        info_block = client.blocks.retrieve(info_block_or_id)
+    else:
+        info_block = info_block_or_id
+
+    # 1) Decrypt the info block's value (must be the encrypted bundle string)
+    enc_info = (
+        info_block.get("value") if isinstance(info_block, dict)
+        else getattr(info_block, "value", None)
+    )
+    if enc_info is None:
+        raise ValueError("Info block has no 'value' to decrypt")
+    info_plain = decrypt_value(enc_info, aad=aad)  # returns a plaintext string
+
+    # 2) Parse the JSON you stored in create_info_block
+    try:
+        info_obj = json.loads(info_plain)
+    except json.JSONDecodeError:
+        raise ValueError("Info block plaintext is not JSON; expected keys like 'Memory Block ID'")
+
+    content_block_id = info_obj["Memory Block ID"]
+
+    # 3) Fetch content block and decrypt its value
+    content_block = client.blocks.retrieve(content_block_id)
+    enc_content = (
+        content_block.get("value") if isinstance(content_block, dict)
+        else getattr(content_block, "value", None)
+    )
+    if enc_content is None:
+        raise ValueError("Content block has no 'value' to decrypt")
+
+    content_plain = decrypt_value(enc_content, aad=aad)  # plaintext string of your memory
+    return content_plain
 
 
 #not shared to anyone but that one agent and no tooling should ever expose and get other agent's identities
