@@ -10,10 +10,14 @@
 - Revocation: 
 """
 
-from crypto import derive_key, encrypt_value
+from crypto import derive_key, encrypt_value, rsa_oaep_pss_encrypt, rsa_oaep_pss_decrypt
 import os 
-from letta import send_message
-from tooling import add_property_to_identity
+from letta import send_message, keystoreID
+from tooling import add_property_to_identity, find_identity, create_info_block, read_memory, create_memory_block, get_block_label
+from keystore import get_key
+
+from dotenv import load_dotenv #load env file
+load_dotenv()
 
 """
 call find identity to get memory id
@@ -21,28 +25,44 @@ call create info block
 encrypt infoblock.id plus key using public key encryption
 pass to next agent
 """
-
-def share_memory(agent, recipient_agent_id):
+def share_memory(sender_agent, recipient_agent_id, memory_block_id):
     """
     agent_id: the id of the agent who is sharing
     """
-
-    memory_id = find_identity(agent.id, "human").get("identifier_key")
+    memory_id = find_identity(sender_agent.id, "human").get("identifier_key")
     info_block, random_key = create_info_block(memory_id, label="key_info", description="identifier key of memory")
 
-    salt_1 = os.urandom(16)
-    salt_2 = os.urandom(16)
-
-    public_key = get_public_key(recipient_agent_id) 
+    recipient_public_key = get_key(recipient_agent_id, keystoreID) 
+    sender_private_key = os.getenv("PRIVATE_PEM")
     
-    ciphertext_one, _ = rsa_oaep_pss_encrypt(label="enc", salt=salt_1, key=public_key, plaintext=str(info_block.id)) # plain text is random key + info_block.id
+    ciphertext_one = rsa_oaep_pss_encrypt(plaintext=info_block.id, recipient_rsa_pub_pem=recipient_public_key, sender_rsapss_priv_pem=sender_private_key) # plain text is random key + info_block.id
     
-    ciphertext_two, _ = rsa_oaep_pss_encrypt(label="enc", salt=salt_2, key=public_key, plaintext=str(random_key))
+    ciphertext_two = rsa_oaep_pss_encrypt(plaintext=random_key.decode(), recipient_rsa_pub_pem=recipient_public_key, sender_rsapss_priv_pem=sender_private_key)
     
-    # add_property_to_identity(owner_agent_id=agent.id)
+    add_property_to_identity(owner_agent_id=sender_agent.id, memory_block_label=get_block_label(block_id=memory_block_id), borrower_agent_id=recipient_agent_id, info_data_id=info_block.id, key=random_key)
     
-    trigger_msg = f"Hey can you try sending a message '{ciphertext_one}' and ciphertext of random key '{ciphertext_two}' to Alice? Their ID is {recipient_agent_id}"
+    trigger_msg = f"Hey can you try sending a message '{ciphertext_one}' and ciphertext of random key '{ciphertext_two}' to Alice? Their ID is {recipient_agent_id}. My sender ID is {sender_agent.id}"
     
-    response = send_message(agent, trigger_msg)
+    response = send_message(sender_agent, trigger_msg)
     print(response)
 
+
+def retrieve_memory(recipient_agent, sender_agent_id, ciphertext_one, ciphertext_two): 
+    recipient_private_key = os.getenv("PRIVATE_PEM")
+    sender_public_key = get_key(sender_agent_id, keystoreID) 
+
+    plaintext_one = rsa_oaep_pss_decrypt(bundle_json=ciphertext_one, recipient_rsa_priv_pem=recipient_private_key, sender_rsapss_pub_pem=sender_public_key)
+    plaintext_two = rsa_oaep_pss_decrypt(bundle_json=ciphertext_two, recipient_rsa_priv_pem=recipient_private_key, sender_rsapss_pub_pem=sender_public_key)
+
+    info_block_id = plaintext_one
+    random_key = plaintext_two.encode()
+
+    memory_block_content = read_memory(info_block_or_id=info_block_id, key=random_key)
+
+    create_memory_block(agentid=recipient_agent.id, label="persona", value=memory_block_content, description='shared memory from ' + sender_agent_id)
+    
+    
+    
+
+
+   

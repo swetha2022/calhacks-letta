@@ -21,6 +21,7 @@ from tools.create_memory_block import create_memory_block
 
 # client = Letta(token="sk-let-MWQzYTg2YTUtZGE4ZC00MWViLWJkMmYtZWMxY2NhOThkYzY3OjFjNjZkYzFhLWY5MWQtNDI3My04ZDJhLWEwYzc1ZjQwNTIxOA==")
 client = get_client()
+keystoreID=create_keystore().id
 
 from pathlib import Path
 # code = Path("tooling.py").read_text()
@@ -53,8 +54,15 @@ def create_agent(model_path, embedding_path, human_descriptor, persona_descripto
     agent = client.agents.create(
         model=model_path,
         embedding=embedding_path,
-        tool_ids=[t.id for t in tools],
+        tool_ids=[tool.id]
     )
+    privatepem, publicpem = generate_rsa_keypair(os.getenv("MASTER_PRIVATE_KEY"))
+    #store private pem
+    os.environ["PRIVATE_PEM"] = privatepem
+
+    #store public pem in Keystore
+    set_key(agentid=agent.id, pubpem=publicpem, keystoreID=keystoreID)
+
     create_memory_block(agent.id, label="human", value=human_descriptor, description="description of human")
     create_memory_block(agent.id, label="persona", value=persona_descriptor, description="description of persona")
     return agent

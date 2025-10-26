@@ -74,9 +74,9 @@
 #     }
 #     return json.dumps(bundle, separators=(",", ":")), key
 
-# def decrypt_value(enc_bundle_json: str, aad: bytes | None = None) -> str:
-#     """
-#     Decrypt a JSON bundle produced by encrypt_value and return the original UTF-8 string.
+def decrypt_value(enc_bundle_json: str, key: Optional[bytes], aad: bytes | None = None) -> str:
+    """
+    Decrypt a JSON bundle produced by encrypt_value and return the original UTF-8 string.
 
 #     Args:
 #         enc_bundle_json: JSON string with fields salt_b64, nonce_b64, ct_b64, label, alg, kdf.
@@ -94,10 +94,13 @@
 #     except (KeyError, ValueError, binascii.Error, json.JSONDecodeError) as e:
 #         raise ValueError("Invalid encryption bundle") from e
 
-#     key = derive_key(label, salt=salt, length=32)
-#     aesgcm = AESGCM(key)
-#     pt = aesgcm.decrypt(nonce, ct, aad)
-#     return pt.decode("utf-8")
+    if key:
+        key = key
+    else:
+        key = derive_key(label, salt=salt, length=32)
+    aesgcm = AESGCM(key)
+    pt = aesgcm.decrypt(nonce, ct, aad)
+    return pt.decode("utf-8")
 
 
 # ##PUBLIC KEY ENCRYPTION WITH RSA OAEP AND SIGNING WITH RSA PSS##
