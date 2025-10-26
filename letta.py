@@ -1,5 +1,5 @@
 from letta_client import Letta
-from tools import create_memory_block
+from tooling import create_memory_block
 
 client = Letta(token="sk-let-MWQzYTg2YTUtZGE4ZC00MWViLWJkMmYtZWMxY2NhOThkYzY3OjFjNjZkYzFhLWY5MWQtNDI3My04ZDJhLWEwYzc1ZjQwNTIxOA==")
 
