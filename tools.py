@@ -47,26 +47,37 @@ def create_memory_block(agentid, label: str, value: str, description: str):
         description=description,
         value=value)
 
-    info_block = create_info_block(memory_block.id, label, description)
+    info_block = create_info_block(memory_block.id, label, description="None")
     #attach info_block to agent and return info_block.id
     client.agents.blocks.attach(info_block.id, agentid)
-    return info_block.id
+
+    #add to owner identity
+    createOwnerIdentity(agentid, memory_block.id)
+    return info_block
 
 def create_info_block(memory_block_id, label, description):
     """
     create an info block that contains a key, location to memory block, and the label. Return info block.
     """
-    info_block = create_block(
+    token = os.getenv("LETTA_API_KEY")
+    client = Letta(token=token)
+
+    info_block = client.blocks.create(
         label=f"info-{label}",
         description=description,
         value=f"Memory Block ID: {memory_block_id}, Label: {label}, Key: {derive_key(label, salt=memory_block_id.encode(), length=32).hex()}",
     )
     return info_block
 
-# def read_memory_block():
+def createOwnerIdentity(agentid, memoryid): #each memory is associated with an owner and the properties are the sharer's id and their info_data block id plus key to decrypt
+    token = os.getenv("LETTA_API_KEY")
+    client = Letta(token=token)
+    client.identities.create(
+        agent_id = agentid, #owner
+        identifier_key=str(memoryid), #memory block
+        name=str(memoryid), 
+        identity_type="other",
+        properties={} #sharer info to be filled when shared later
+    )
 
-
-# @tool
-# def test():
-#     client - os.getenv(letapikey)
-#     identities = client.agents.retrieve(agent_state.id).idnetities
+    # identities = client.agents.retrieve(agent_state.id).idnetities

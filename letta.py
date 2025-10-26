@@ -1,5 +1,5 @@
 from letta_client import Letta
-
+from tools import derive_key, create_memory_block
 
 client = Letta(token="sk-let-MWQzYTg2YTUtZGE4ZC00MWViLWJkMmYtZWMxY2NhOThkYzY3OjFjNjZkYzFhLWY5MWQtNDI3My04ZDJhLWEwYzc1ZjQwNTIxOA==")
 
@@ -7,19 +7,22 @@ def create_agent(model_path, embedding_path, human_descriptor, persona_descripto
     agent = client.agents.create(
         model=model_path,
         embedding=embedding_path,
-        memory_blocks=[
-            {
-                "label": "human",
-                "value": human_descriptor
-            },
-            {
-                "label": "persona",
-                "value": persona_descriptor
-            }
-        ],
+        # memory_blocks=[
+        #     {
+        #         "label": "human",
+        #         "value": human_descriptor
+        #     },
+        #     {
+        #         "label": "persona",
+        #         "value": persona_descriptor
+        #     }
+        # ],
         tags=tags,
         tools=tools
     )
+    #add human and persona memories
+    create_memory_block(agent.id, label="human", value=human_descriptor)
+    create_memory_block(agent.id, label="persona", value=persona_descriptor)
     return agent
 
 def send_message(agent, content):
