@@ -49,6 +49,7 @@ def create_info_block(memory_block_id, label, description):
     return info_block
 
 
+
 #not shared to anyone but that one agent and no tooling should ever expose and get other agent's identities
 #so should be secure
 def createOwnerIdentity(agentid, memoryid): 
