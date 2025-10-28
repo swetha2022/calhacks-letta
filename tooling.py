@@ -67,6 +67,7 @@ def create_info_block(memory_block_id, label, description):
     encrypted_value, key = encrypt_value("enc", value)
     info_block = client.blocks.create(
         label=f"info-{label}",
+        entity_id=f"info-{label}",
         description=description,
         value=encrypted_value,
     )
@@ -116,7 +117,7 @@ def get_block_label(block_id: str) -> str | None:
     client = get_client()
     block = client.blocks.retrieve(block_id)
     # block is usually a dict-like object
-    return block.label
+    return block.id
 
 def encrypt_value(label: str, plaintext: str, aad: bytes | None = None) -> str:
     """
@@ -147,31 +148,6 @@ def encrypt_value(label: str, plaintext: str, aad: bytes | None = None) -> str:
         # NOTE: AAD is not stored; if you use AAD, the decryptor must supply the same bytes.
     }
     return json.dumps(bundle, separators=(",", ":")), key
-
-# def decrypt_value(enc_bundle_json: str, aad: bytes | None = None) -> str:
-#     """
-#     Decrypt a JSON bundle produced by encrypt_value and return the original UTF-8 string.
-
-#     Args:
-#         enc_bundle_json: JSON string with fields salt_b64, nonce_b64, ct_b64, label, alg, kdf.
-#         aad: Optional associated data; must match what was used during encryption.
-#     """
-#     try:
-#         bundle = json.loads(enc_bundle_json)
-#         if bundle.get("alg") != "AESGCM" or bundle.get("kdf") != "HKDF-SHA256":
-#             raise ValueError("Unsupported alg/kdf in bundle")
-
-#         label = bundle["label"]
-#         salt = b64decode(bundle["salt_b64"])
-#         nonce = b64decode(bundle["nonce_b64"])
-#         ct = b64decode(bundle["ct_b64"])
-#     except (KeyError, ValueError, binascii.Error, json.JSONDecodeError) as e:
-#         raise ValueError("Invalid encryption bundle") from e
-
-#     key = derive_key(label, salt=salt, length=32)
-#     aesgcm = AESGCM(key)
-#     pt = aesgcm.decrypt(nonce, ct, aad)
-#     return pt.decode("utf-8")
 
 def decrypt_value(enc_bundle_json: str, aad: bytes | None = None, key: Optional[bytes] = None) -> str:
     """
@@ -448,7 +424,8 @@ def create_memory_block(agentid: str, label: str, value: str, description: str) 
 
     # Create the memory block
     memory_block = client.blocks.create(
-        label=label,
+        label=f"{label}",
+        entity_id=label,
         description=description,
         value=encrypted_value,
     )
@@ -471,70 +448,6 @@ def create_memory_block(agentid: str, label: str, value: str, description: str) 
         "memory_block_id": getattr(memory_block, "id", None),
         "info_block_id": getattr(info_block, "id", None),
     }
-
-
-# def read_memory(info_block_or_id = Union[str, dict, object], key = Optional[bytes], aad: bytes | None = None) -> str:
-#     """
-#     Retrieve and decrypt a memory block's plaintext content from encrypted storage.
-
-#     This function accepts either a block ID, a dictionary, or an SDK object representing
-#     an "info block". It first decrypts the info block to obtain the corresponding
-#     "content block" ID, then fetches and decrypts the content block to return
-#     the original plaintext string.
-
-#     Args:
-#         info_block_or_id (str | dict | object): The info block or its unique ID.
-#             If a string ID is provided, the corresponding block is fetched via the client.
-#         key (Optional[bytes]): Optional symmetric key used for decryption.
-#             If not provided, a default or preconfigured key may be used.
-#         aad (bytes | None): Optional Additional Authenticated Data (AAD)
-#             used to authenticate the decryption process.
-
-#     Returns:
-#         str: The decrypted plaintext string contained in the content block.
-#     """
-#     client = get_client()
-
-#     # Normalize: accept id, dict, or SDK object for the info block
-#     if isinstance(info_block_or_id, str):
-#         info_block = client.blocks.retrieve(info_block_or_id)
-#     else:
-#         info_block = info_block_or_id
-
-#     # 1) Decrypt the info block's value (must be the encrypted bundle string)
-#     enc_info = (
-#         info_block.get("value") if isinstance(info_block, dict)
-#         else getattr(info_block, "value", None)
-#     )
-#     if enc_info is None:
-#         raise ValueError("Info block has no 'value' to decrypt")
-#     if key:
-#         info_plain = decrypt_value(enc_info, key=key, aad=aad)
-#     else:
-#         info_plain = decrypt_value(enc_info, aad=aad)  # returns a plaintext string
-
-#     # 2) Parse the JSON you stored in create_info_block
-#     try:
-#         info_obj = json.loads(info_plain)
-#     except json.JSONDecodeError:
-#         raise ValueError("Info block plaintext is not JSON; expected keys like 'Memory Block ID'")
-
-#     content_block_id = info_obj["Memory Block ID"]
-
-#     # 3) Fetch content block and decrypt its value
-#     content_block = client.blocks.retrieve(content_block_id)
-#     enc_content = (
-#         content_block.get("value") if isinstance(content_block, dict)
-#         else getattr(content_block, "value", None)
-#     )
-#     if enc_content is None:
-#         raise ValueError("Content block has no 'value' to decrypt")
-
-#     if key:
-#         content_plain = decrypt_value(enc_content, key=key, aad=aad)  # plaintext string of your memory
-#     else:
-#         content_plain = decrypt_value(enc_content, aad=aad)
-#     return content_plain
 
 from typing import Optional
 
@@ -626,7 +539,7 @@ def retrieve_memory(recipient_agent: object, sender_agent_id: str, ciphertext_on
     RuntimeError
         If decryption or block creation fails.
     """
-    recipient_private_key = os.getenv("PRIVATE_PEM")
+    recipient_private_key = os.getenv(f"{recipient_agent.id}-PRIVATE_PEM")
     sender_public_key = get_key(sender_agent_id, keystoreID)
 
     plaintext_one = rsa_oaep_pss_decrypt(
@@ -647,7 +560,7 @@ def retrieve_memory(recipient_agent: object, sender_agent_id: str, ciphertext_on
 
     create_memory_block(
         agentid=recipient_agent.id,
-        label="persona",
+        label=memory_block_content[:20],  # use first 20 chars as label
         value=memory_block_content,
         description=f"shared memory from {sender_agent_id}",
     )
@@ -680,6 +593,22 @@ def ring_an_agent(yourTarget: str, yourMessage: str):
     )
     return str(response)
 
+def _extract_text(resp) -> str:
+    for m in reversed(resp.messages):
+        if hasattr(m, "content") and isinstance(m.content, str):
+            return m.content
+        out = getattr(m, "output", None) or getattr(m, "result", None)
+        if out is not None:
+            return out if isinstance(out, str) else json.dumps(out)
+    return ""
+
+# def send_message(agent_id: str, content: str) -> str:
+#     client = get_client()
+#     resp = client.agents.messages.create(
+#         agent_id=agent_id,
+#         messages=[{"role": "user", "content": content}],
+#     )
+#     return _extract_text(resp)
 
 
 def send_message(agentid:str, content:str):
@@ -718,6 +647,146 @@ def send_message(agentid:str, content:str):
         ]
     )
     # print(response)
-    return response.messages[-1].content
+    return _extract_text(response)
 
 
+# --- WRAPPERS (exported as tools) ---
+
+def create_memory_block_tool(agent_id: str, label: str, value: str, description: str) -> dict:
+    """
+    Create an encrypted memory block and attach its info block to an agent.
+
+    Args:
+        agent_id (str): Target agent's ID (e.g., "agent-1234abcd").
+        label (str): Human-readable label for the new memory (e.g., "profile", "notes").
+        value (str): Plaintext content to encrypt and store in the memory block.
+        description (str): Short description to store alongside the memory (for operators).
+
+    Returns:
+        dict: JSON-serializable payload with created IDs:
+            {
+              "memory_block_id": "<block-id>",
+              "info_block_id": "<block-id>"
+            }
+
+    Raises:
+        ValueError: If agent_id/label/value/description are empty.
+        RuntimeError: If the Letta API fails to create or attach blocks.
+    """
+    if not (agent_id and label and value and description):
+        raise ValueError("agent_id, label, value, and description are required")
+    out = create_memory_block(agent_id, label, value, description)
+    return {"memory_block_id": out["memory_block_id"], "info_block_id": out["info_block_id"]}
+
+
+def read_memory_tool(info_block_id: str, key_hex: str | None = None, aad_b64: str | None = None) -> str:
+    """
+    Read & decrypt a memory via its info-block ID.
+
+    Args:
+        info_block_id (str): The ID of the *info* block that points to the actual content block.
+        key_hex (str | None): Optional hex-encoded AES key override (e.g., "a3f2...").
+                              If omitted, the key is HKDF-derived from the stored bundle.
+        aad_b64 (str | None): Optional base64-encoded AAD used at encryption time.
+                              Must match exactly to decrypt successfully.
+
+    Returns:
+        str: The decrypted plaintext stored in the referenced content block.
+
+    Raises:
+        ValueError: If the info block or content block is missing/invalid, or AAD mismatches.
+        RuntimeError: If the Letta API fails to retrieve blocks.
+    """
+    key = bytes.fromhex(key_hex) if key_hex else None
+    aad = b64decode(aad_b64) if aad_b64 else None
+    return read_memory(info_block_id, key=key, aad=aad)
+
+
+def retrieve_memory_tool(
+    recipient_agent_id: str,
+    sender_agent_id: str,
+    ciphertext_one: str,
+    ciphertext_two: str,
+    keystore_id: str
+) -> str:
+    """
+    Import a memory shared by another agent using RSA-OAEP+PSS bundles.
+
+    Args:
+        recipient_agent_id (str): The agent ID that will receive/import the shared memory.
+        sender_agent_id (str): The agent ID of the original sharer (used to fetch their public key).
+        ciphertext_one (str): JSON bundle (string) produced by rsa_oaep_pss_encrypt
+                              holding the *info block ID* (base64 fields inside).
+        ciphertext_two (str): JSON bundle (string) produced by rsa_oaep_pss_encrypt
+                              holding the *symmetric key* (as UTF-8 string inside).
+        keystore_id (str): Block ID of the keystore mapping agent IDs → RSA public keys.
+
+    Returns:
+        str: "ok" on success (the function creates a new memory for the recipient).
+
+    Raises:
+        ValueError: If keys are missing/invalid, signatures fail, or AAD mismatches.
+        RuntimeError: If Letta API calls fail while creating/attaching the new memory.
+    """
+    client = get_client()
+    recipient = client.agents.retrieve(recipient_agent_id)
+    retrieve_memory(recipient, sender_agent_id, ciphertext_one, ciphertext_two, keystore_id)
+    return "ok"
+
+
+def ring_an_agent_tool(target_agent_id: str, message: str) -> str:
+    """
+    Send an agent→agent message.
+
+    Args:
+        target_agent_id (str): The destination agent's ID.
+        message (str): The text message to post as a user role to the target agent.
+
+    Returns:
+        str: A stringified Letta API response (useful for debugging).
+
+    Raises:
+        RuntimeError: If the message cannot be delivered via the Letta API.
+    """
+    if not (target_agent_id and message):
+        raise ValueError("target_agent_id and message are required")
+    return ring_an_agent(target_agent_id, message)
+
+
+def send_message_tool(agent_id: str, content: str) -> str:
+    """
+    Send a user message to an agent and return the agent’s textual reply.
+
+    Args:
+        agent_id (str): Target agent ID to send the message to.
+        content (str): The text content of the user message.
+
+    Returns:
+        str: The assistant's latest textual response (best-effort extraction).
+             If the last entry is a tool return, a JSON string of the tool output is returned.
+
+    Raises:
+        RuntimeError: If the message send fails or no textual content is extractable.
+    """
+    if not (agent_id and content):
+        raise ValueError("agent_id and content are required")
+    return send_message(agent_id, content)
+
+
+def list_blocks_tool(agent_id: str) -> list[dict]:
+    """
+    List blocks attached to an agent.
+
+    Args:
+        agent_id (str): The agent ID whose attached blocks will be listed.
+
+    Returns:
+        list[dict]: A list of { "id": str | None, "label": str | None } for each attached block.
+
+    Raises:
+        RuntimeError: If the agent cannot be retrieved.
+    """
+    client = get_client()
+    ag = client.agents.retrieve(agent_id)
+    blocks = getattr(ag, "blocks", []) or []
+    return [{"id": getattr(b, "id", None), "label": getattr(b, "label", None)} for b in blocks]
